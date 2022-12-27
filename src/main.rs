@@ -1,0 +1,3 @@
+mod document;
+
+fn main() {}
