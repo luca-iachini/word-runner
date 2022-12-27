@@ -1,6 +1,6 @@
 mod epub;
 
-trait Document {
+pub trait Document {
     fn page(&mut self, number: usize) -> anyhow::Result<Page>;
 }
 
