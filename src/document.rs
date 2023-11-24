@@ -24,7 +24,7 @@ impl<'a> Iterator for PagesIterator<'a> {
 
 #[derive(Debug)]
 pub struct Page {
-    number: usize,
+    pub number: usize,
     content: String,
 }
 
