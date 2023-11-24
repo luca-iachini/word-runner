@@ -1,4 +1,5 @@
 mod document;
-mod reader;
 
-fn main() {}
+fn main() -> anyhow::Result<()> {
+    Ok(())
+}
