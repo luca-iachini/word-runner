@@ -1,11 +1,29 @@
 use std::{fs::File, io::BufReader, path::Path};
 
-use anyhow::bail;
+use anyhow::{bail, Result};
 
 pub trait Document {
-    fn page(&mut self, number: usize) -> anyhow::Result<Page>;
+    fn page(&mut self, number: usize) -> Result<Page>;
+    fn pages<'a>(&'a mut self) -> PagesIterator<'a>;
 }
 
+pub struct PagesIterator<'a> {
+    index: usize,
+    document: Box<&'a mut dyn Document>,
+}
+
+impl<'a> Iterator for PagesIterator<'a> {
+    type Item = Page;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let result = self.document.page(self.index).ok()?;
+        dbg!("ing");
+        self.index += 1;
+        Some(result)
+    }
+}
+
+#[derive(Debug)]
 pub struct Page {
     number: usize,
     content: String,
@@ -18,7 +36,7 @@ impl Page {
             content: content.to_string(),
         }
     }
-    fn words<'a>(&'a self) -> WordsIterator<'a> {
+    pub fn words<'a>(&'a self) -> WordsIterator<'a> {
         WordsIterator {
             index: 0,
             words: self.content.split_whitespace().collect(),
@@ -26,7 +44,7 @@ impl Page {
     }
 }
 
-struct WordsIterator<'a> {
+pub struct WordsIterator<'a> {
     index: usize,
     words: Vec<&'a str>,
 }
@@ -35,22 +53,18 @@ impl<'a> Iterator for WordsIterator<'a> {
     type Item = &'a str;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.index < self.words.len() {
-            let result = self.words.get(self.index).copied();
-            self.index += 1;
-            result
-        } else {
-            None
-        }
+        let result = self.words.get(self.index).copied()?;
+        self.index += 1;
+        Some(result)
     }
 }
 
-struct EpubDoc {
+pub struct EpubDoc {
     doc: epub::doc::EpubDoc<BufReader<File>>,
 }
 
 impl EpubDoc {
-    pub fn open(path: &Path) -> anyhow::Result<Self> {
+    pub fn open(path: &Path) -> Result<Self> {
         Ok(Self {
             doc: epub::doc::EpubDoc::new(path)?,
         })
@@ -58,7 +72,7 @@ impl EpubDoc {
 }
 
 impl Document for EpubDoc {
-    fn page(&mut self, number: usize) -> anyhow::Result<Page> {
+    fn page(&mut self, number: usize) -> Result<Page> {
         let page_id = self.doc.spine.get(number);
         let page_id = match page_id {
             Some(id) => id.to_string(),
@@ -68,6 +82,13 @@ impl Document for EpubDoc {
         let content = String::from_utf8(content)?;
         let content = html2text::from_read(content.as_bytes(), 100);
         Ok(Page::new(number, content))
+    }
+
+    fn pages<'a>(&'a mut self) -> PagesIterator<'a> {
+        PagesIterator {
+            index: 0,
+            document: Box::new(self),
+        }
     }
 }
 
@@ -85,6 +106,14 @@ mod test {
         let_assert!(Ok(page) = page);
         check!(page.number == 2);
         check!(page.content == content);
+    }
+
+    #[rstest]
+    fn it_iterates_over_pages(mut epub: EpubDoc) {
+        let mut pages = epub.pages();
+
+        let_assert!(Some(page) = pages.next());
+        check!(page.number == 0);
     }
 
     #[rstest]
