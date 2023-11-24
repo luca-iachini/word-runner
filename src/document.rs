@@ -17,7 +17,6 @@ impl<'a> Iterator for PagesIterator<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         let result = self.document.page(self.index).ok()?;
-        dbg!("ing");
         self.index += 1;
         Some(result)
     }
