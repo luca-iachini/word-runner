@@ -6,7 +6,7 @@ mod document;
 use tui::{
     backend::{Backend, CrosstermBackend},
     layout::Layout,
-    layout::{Constraint, Direction, Rect},
+    layout::{Alignment, Constraint, Direction, Rect},
     style::{Color, Style},
     text::{Span, Spans, Text},
     widgets::{Block, Borders, Paragraph},
@@ -72,6 +72,7 @@ fn current_word(word: &str) -> Paragraph {
     ]
     .into();
     Paragraph::new(word_text)
+        .alignment(Alignment::Center)
         .block(
             Block::default()
                 .title(format!("current word"))
