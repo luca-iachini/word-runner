@@ -1,7 +1,7 @@
 use std::{path::PathBuf, thread, time::Duration};
 
 use clap::{Parser, ValueHint};
-use document::{Document, Page};
+use document::{Document, Page, TableOfContentNode};
 mod document;
 use ratatui::{
     backend::CrosstermBackend,
@@ -12,7 +12,7 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph},
     Terminal,
 };
-use tui_tree_widget::{Tree, TreeItem};
+use tui_tree_widget::{Tree, TreeItem, TreeState};
 
 #[derive(Parser)]
 struct Args {
@@ -34,19 +34,31 @@ fn main() -> anyhow::Result<()> {
     let mut terminal = Terminal::new(backend)?;
     terminal.clear()?;
 
+    let mut table_of_content_tree_state = TreeState::default();
+
     let mut doc = document::EpubDoc::open(&args.path).expect("unable to open the epub");
+    let table_of_content = doc.table_of_contents();
     let mut pages = doc.pages();
     while let Some(page) = pages.next() {
         let mut words = page.words();
         while let Some(word) = words.next() {
             terminal.draw(|f| {
-                let chunks = Layout::default()
+                let main_layout = Layout::default()
                     .direction(Direction::Vertical)
                     .margin(1)
                     .constraints([Constraint::Length(3), Constraint::Percentage(100)].as_ref())
                     .split(f.size());
-                f.render_widget(current_word(word), chunks[0]);
-                f.render_widget(content(&page), chunks[1]);
+                let content_layout = Layout::default()
+                    .direction(Direction::Horizontal)
+                    .constraints(vec![Constraint::Percentage(25), Constraint::Percentage(75)])
+                    .split(main_layout[1]);
+                f.render_widget(current_word(word), main_layout[0]);
+                f.render_stateful_widget(
+                    table_of_contents(&table_of_content),
+                    content_layout[0],
+                    &mut table_of_content_tree_state,
+                );
+                f.render_widget(content(&page), content_layout[1]);
             })?;
             thread::sleep(args.speed);
         }
@@ -54,11 +66,11 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn table_of_contents(document: &impl Document) -> Tree<&str> {
-    let item = TreeItem::new_leaf("l", "leaf");
-    Tree::new(vec![item])
+fn table_of_contents(content: &[TableOfContentNode]) -> Tree<String> {
+    let items = content.into_iter().map(Into::into).collect();
+    Tree::new(items)
         .expect("all item identifiers are unique")
-        .block(Block::default().title("ciao").borders(Borders::ALL))
+        .block(Block::default().title("Contents").borders(Borders::ALL))
 }
 
 fn content(page: &Page) -> Paragraph {
@@ -96,4 +108,19 @@ fn split_word(word: &str) -> (String, String, String) {
     let first_half = word.chars().take(mid).collect();
     let second_half = word.chars().skip(mid + 1).collect();
     (first_half, center, second_half)
+}
+
+impl<'a> From<&TableOfContentNode> for TreeItem<'a, String> {
+    fn from(value: &TableOfContentNode) -> Self {
+        if value.children.is_empty() {
+            TreeItem::new_leaf(value.name.clone(), value.name.clone())
+        } else {
+            TreeItem::new(
+                value.name.clone(),
+                value.name.clone(),
+                value.children.iter().map(Into::into).collect(),
+            )
+            .unwrap()
+        }
+    }
 }

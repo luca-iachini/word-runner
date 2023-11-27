@@ -7,16 +7,16 @@ use std::{
 use anyhow::{anyhow, bail, Result};
 use epub::doc::NavPoint;
 
-struct TableContentNode {
-    name: String,
-    content: Vec<TableContentNode>,
+pub struct TableOfContentNode {
+    pub name: String,
+    pub children: Vec<TableOfContentNode>,
 }
 
-impl From<&NavPoint> for TableContentNode {
+impl From<&NavPoint> for TableOfContentNode {
     fn from(value: &NavPoint) -> Self {
         Self {
             name: value.label.clone(),
-            content: value.children.iter().map(Into::into).collect(),
+            children: value.children.iter().map(Into::into).collect(),
         }
     }
 }
@@ -24,7 +24,7 @@ impl From<&NavPoint> for TableContentNode {
 pub trait Document {
     fn page(&mut self, number: usize) -> Result<Page>;
     fn pages<'a>(&'a mut self) -> PagesIterator<'a>;
-    fn table_of_contents(&self) -> Vec<TableContentNode>;
+    fn table_of_contents(&self) -> Vec<TableOfContentNode>;
 }
 
 pub struct PagesIterator<'a> {
@@ -113,7 +113,7 @@ impl Document for EpubDoc {
         }
     }
 
-    fn table_of_contents(&self) -> Vec<TableContentNode> {
+    fn table_of_contents(&self) -> Vec<TableOfContentNode> {
         self.doc.toc.iter().map(Into::into).collect()
     }
 }
