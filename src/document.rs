@@ -23,22 +23,39 @@ impl From<&NavPoint> for TableOfContentNode {
 
 pub trait Document {
     fn page(&mut self, number: usize) -> Result<Page>;
-    fn pages<'a>(&'a mut self) -> PagesIterator<'a>;
+    fn cursor<'a>(&'a mut self) -> DocumentCursor<'a>;
     fn table_of_contents(&self) -> Vec<TableOfContentNode>;
 }
 
-pub struct PagesIterator<'a> {
-    index: usize,
-    document: Box<&'a mut dyn Document>,
+pub struct DocumentCursor<'a> {
+    doc: Box<&'a mut dyn Document>,
+    page_index: usize,
+    word_index: usize,
 }
 
-impl<'a> Iterator for PagesIterator<'a> {
-    type Item = Page;
+impl<'a> DocumentCursor<'a> {
+    fn new(doc: &'a mut impl Document) -> Self {
+        Self {
+            doc: Box::new(doc),
+            page_index: 0,
+            word_index: 0,
+        }
+    }
 
-    fn next(&mut self) -> Option<Self::Item> {
-        let result = self.document.page(self.index).ok()?;
-        self.index += 1;
-        Some(result)
+    pub fn current_page(&mut self) -> Option<Page> {
+        self.doc.page(self.page_index).ok()
+    }
+
+    pub fn current_word(&mut self) -> Option<String> {
+        self.current_page()?.word(self.word_index)
+    }
+
+    pub fn next_page(&mut self) {
+        self.page_index += 1;
+    }
+
+    pub fn next_word(&mut self) {
+        self.word_index += 1;
     }
 }
 
@@ -55,26 +72,11 @@ impl Page {
             content: content.to_string(),
         }
     }
-    pub fn words<'a>(&'a self) -> WordsIterator<'a> {
-        WordsIterator {
-            index: 0,
-            words: self.content.split_whitespace().collect(),
-        }
-    }
-}
-
-pub struct WordsIterator<'a> {
-    index: usize,
-    words: Vec<&'a str>,
-}
-
-impl<'a> Iterator for WordsIterator<'a> {
-    type Item = &'a str;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let result = self.words.get(self.index).copied()?;
-        self.index += 1;
-        Some(result)
+    pub fn word(&self, index: usize) -> Option<String> {
+        self.content
+            .split_whitespace()
+            .nth(index)
+            .map(ToString::to_string)
     }
 }
 
@@ -106,15 +108,11 @@ impl Document for EpubDoc {
         Ok(Page::new(number, content))
     }
 
-    fn pages<'a>(&'a mut self) -> PagesIterator<'a> {
-        PagesIterator {
-            index: 0,
-            document: Box::new(self),
-        }
-    }
-
     fn table_of_contents(&self) -> Vec<TableOfContentNode> {
         self.doc.toc.iter().map(Into::into).collect()
+    }
+    fn cursor<'a>(&'a mut self) -> DocumentCursor<'a> {
+        DocumentCursor::new(self)
     }
 }
 
@@ -132,22 +130,6 @@ mod test {
         let_assert!(Ok(page) = page);
         check!(page.number == 2);
         check!(page.content == content);
-    }
-
-    #[rstest]
-    fn it_iterates_over_pages(mut epub: EpubDoc) {
-        let mut pages = epub.pages();
-
-        let_assert!(Some(page) = pages.next());
-        check!(page.number == 0);
-    }
-
-    #[rstest]
-    fn it_iterates_over_words(mut epub: EpubDoc) {
-        let page = epub.page(2).unwrap();
-        let mut words = page.words();
-        check!("[Dedication][1]" == words.next().unwrap());
-        check!("For" == words.next().unwrap());
     }
 
     #[fixture]
