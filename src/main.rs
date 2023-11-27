@@ -4,8 +4,9 @@ use std::{
 };
 
 use clap::{Parser, ValueHint};
-use document::{Document, DocumentCursor, Section, TableOfContentNode};
+use document::{Document, DocumentCursor, TableOfContentNode};
 mod document;
+use itertools::Itertools;
 use ratatui::{
     backend::CrosstermBackend,
     layout::Layout,
@@ -100,20 +101,60 @@ fn view(model: &mut Model, f: &mut Frame) {
         content_layout[0],
         &mut model.table_of_contents_state,
     );
-    f.render_widget(content(&page), content_layout[1]);
+    f.render_widget(content(&page, model.cursor.word_index()), content_layout[1]);
 }
 
 fn table_of_contents(content: &[TableOfContentNode]) -> Tree<String> {
     let items = content.into_iter().map(Into::into).collect();
     Tree::new(items)
         .expect("all item identifiers are unique")
-        .block(Block::default().title("Contents").borders(Borders::ALL))
+        .block(
+            Block::default()
+                .title("Table of Contents")
+                .borders(Borders::ALL),
+        )
 }
 
-fn content(page: &str) -> Paragraph {
-    let lines: Vec<Line> = page.lines().map(|l| Line::raw(l)).collect();
+fn content(page: &str, current_word: usize) -> Paragraph {
+    let mut lines: Vec<Line> = vec![];
+    let mut words = 0;
+    let mut found = false;
+    let word_count = |l: &str| {
+        if l.trim().is_empty() {
+            0
+        } else {
+            l.trim().chars().filter(|c| c.is_whitespace()).count() + 1
+        }
+    };
+    for l in page.lines() {
+        let mut split = l.split_whitespace().into_iter();
+        lines.push(if current_word < words + word_count(l) && !found {
+            let line: Line = vec![
+                Span::raw(
+                    split
+                        .clone()
+                        .take(current_word - words)
+                        .collect::<Vec<_>>()
+                        .join(" "),
+                ),
+                Span::raw(" "),
+                Span::styled(
+                    split.nth(current_word - words).unwrap_or_default(),
+                    Style::default().bg(Color::LightYellow),
+                ),
+                Span::raw(" "),
+                Span::raw(split.collect::<Vec<_>>().join(" ")),
+            ]
+            .into();
+            found = true;
+            line
+        } else {
+            Line::raw(l)
+        });
+        words += word_count(l);
+    }
     Paragraph::new(lines)
-        .block(Block::default().title("Page").borders(Borders::ALL))
+        .block(Block::default().title("Content").borders(Borders::ALL))
         .style(Style::default().fg(Color::White).bg(Color::Black))
 }
 
@@ -134,7 +175,7 @@ fn current_word(word: impl ToString) -> Paragraph<'static> {
         .alignment(Alignment::Center)
         .block(
             Block::default()
-                .title(format!("current word"))
+                .title(format!("Current Word"))
                 .borders(Borders::ALL),
         )
         .style(Style::default().fg(Color::White).bg(Color::Black))

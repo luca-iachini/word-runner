@@ -1,4 +1,4 @@
-use std::{fs::File, io::BufReader, path::Path};
+use std::{fs::File, io::BufReader, path::Path, usize};
 
 use anyhow::{anyhow, bail, Result};
 use epub::doc::NavPoint;
@@ -44,6 +44,10 @@ impl<'a> DocumentCursor<'a> {
 
     pub fn current_word(&mut self) -> Option<String> {
         self.current_section()?.word(self.word_index)
+    }
+
+    pub fn word_index(&self) -> usize {
+        self.word_index
     }
 
     pub fn next_section(&mut self) {
