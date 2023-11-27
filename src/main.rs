@@ -1,14 +1,16 @@
-use std::{fmt::Alignment, path::PathBuf, thread, time::Duration};
+use std::{path::PathBuf, thread, time::Duration};
 
 use clap::{Parser, ValueHint};
 use document::Document;
 mod document;
 use tui::{
-    backend::CrosstermBackend,
+    backend::{Backend, CrosstermBackend},
+    layout::Layout,
+    layout::{Constraint, Direction, Rect},
     style::{Color, Style},
     text::{Span, Spans, Text},
     widgets::{Block, Borders, Paragraph},
-    Terminal,
+    Frame, Terminal,
 };
 
 #[derive(Parser)]
@@ -37,26 +39,45 @@ fn main() -> anyhow::Result<()> {
         let mut words = page.words();
         while let Some(word) = words.next() {
             terminal.draw(|f| {
-                let (first_half, center, second_half) = split_word(word);
-                let word_text: Spans = vec![
-                    Span::raw(first_half),
-                    Span::styled(center, Style::default().fg(Color::Red)),
-                    Span::raw(second_half),
-                ]
-                .into();
-                let widget = Paragraph::new(word_text)
-                    .block(
-                        Block::default()
-                            .title(format!("Page {}", page.number))
-                            .borders(Borders::ALL),
-                    )
-                    .style(Style::default().fg(Color::White).bg(Color::Black));
-                f.render_widget(widget, f.size());
+                let chunks = Layout::default()
+                    .direction(Direction::Vertical)
+                    .margin(1)
+                    .constraints([Constraint::Percentage(20), Constraint::Percentage(80)].as_ref())
+                    .split(f.size());
+                f.render_widget(current_word(word), chunks[0]);
+                f.render_widget(content(&page.content, page.number), chunks[1]);
             })?;
             thread::sleep(args.speed);
         }
     }
     Ok(())
+}
+
+fn content(content: &str, page_number: usize) -> Paragraph {
+    Paragraph::new(Span::raw(content))
+        .block(
+            Block::default()
+                .title(format!("Page {}", page_number))
+                .borders(Borders::ALL),
+        )
+        .style(Style::default().fg(Color::White).bg(Color::Black))
+}
+
+fn current_word(word: &str) -> Paragraph {
+    let (first_half, center, second_half) = split_word(word);
+    let word_text: Spans = vec![
+        Span::raw(first_half),
+        Span::styled(center, Style::default().fg(Color::Red)),
+        Span::raw(second_half),
+    ]
+    .into();
+    Paragraph::new(word_text)
+        .block(
+            Block::default()
+                .title(format!("current word"))
+                .borders(Borders::ALL),
+        )
+        .style(Style::default().fg(Color::White).bg(Color::Black))
 }
 
 fn split_word(word: &str) -> (String, String, String) {
