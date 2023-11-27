@@ -25,6 +25,11 @@ struct Args {
     speed: Duration,
 }
 
+fn parse_speed(arg: &str) -> Result<std::time::Duration, std::num::ParseIntError> {
+    let millis = arg.parse()?;
+    Ok(std::time::Duration::from_millis(millis))
+}
+
 struct Model<'a> {
     should_quit: bool,
     cursor: DocumentCursor<'a>,
@@ -88,6 +93,43 @@ fn view(model: &mut Model, f: &mut Frame) {
     f.render_widget(content(&page), content_layout[1]);
 }
 
+fn table_of_contents(content: &[TableOfContentNode]) -> Tree<String> {
+    let items = content.into_iter().map(Into::into).collect();
+    Tree::new(items)
+        .expect("all item identifiers are unique")
+        .block(Block::default().title("Contents").borders(Borders::ALL))
+}
+
+fn content(page: &str) -> Paragraph {
+    let lines: Vec<Line> = page.lines().map(|l| Line::raw(l)).collect();
+    Paragraph::new(lines)
+        .block(Block::default().title("Page").borders(Borders::ALL))
+        .style(Style::default().fg(Color::White).bg(Color::Black))
+}
+
+fn current_word(word: impl ToString) -> Paragraph<'static> {
+    let word = word.to_string();
+    let word_text: Line = if word.is_empty() {
+        Line::raw("")
+    } else {
+        let (first_half, center, second_half) = split_word(word.to_string().as_str());
+        vec![
+            Span::raw(first_half),
+            Span::styled(center, Style::default().fg(Color::Red)),
+            Span::raw(second_half),
+        ]
+        .into()
+    };
+    Paragraph::new(word_text)
+        .alignment(Alignment::Center)
+        .block(
+            Block::default()
+                .title(format!("current word"))
+                .borders(Borders::ALL),
+        )
+        .style(Style::default().fg(Color::White).bg(Color::Black))
+}
+
 fn handle_event(model: &Model) -> anyhow::Result<Option<Message>> {
     if crossterm::event::poll(std::time::Duration::from_millis(250))? {
         if let crossterm::event::Event::Key(key) = crossterm::event::read()? {
@@ -104,11 +146,6 @@ fn handle_event(model: &Model) -> anyhow::Result<Option<Message>> {
         }
         Ok(None)
     }
-}
-
-fn parse_speed(arg: &str) -> Result<std::time::Duration, std::num::ParseIntError> {
-    let millis = arg.parse()?;
-    Ok(std::time::Duration::from_millis(millis))
 }
 
 fn main() -> anyhow::Result<()> {
@@ -146,43 +183,6 @@ fn main() -> anyhow::Result<()> {
     crossterm::execute!(std::io::stderr(), crossterm::terminal::LeaveAlternateScreen)?;
     crossterm::terminal::disable_raw_mode()?;
     Ok(())
-}
-
-fn table_of_contents(content: &[TableOfContentNode]) -> Tree<String> {
-    let items = content.into_iter().map(Into::into).collect();
-    Tree::new(items)
-        .expect("all item identifiers are unique")
-        .block(Block::default().title("Contents").borders(Borders::ALL))
-}
-
-fn content(page: &str) -> Paragraph {
-    let lines: Vec<Line> = page.lines().map(|l| Line::raw(l)).collect();
-    Paragraph::new(lines)
-        .block(Block::default().title("Page").borders(Borders::ALL))
-        .style(Style::default().fg(Color::White).bg(Color::Black))
-}
-
-fn current_word(word: impl ToString) -> Paragraph<'static> {
-    let word = word.to_string();
-    let word_text: Line = if word.is_empty() {
-        Line::raw("")
-    } else {
-        let (first_half, center, second_half) = split_word(word.to_string().as_str());
-        vec![
-            Span::raw(first_half),
-            Span::styled(center, Style::default().fg(Color::Red)),
-            Span::raw(second_half),
-        ]
-        .into()
-    };
-    Paragraph::new(word_text)
-        .alignment(Alignment::Center)
-        .block(
-            Block::default()
-                .title(format!("current word"))
-                .borders(Borders::ALL),
-        )
-        .style(Style::default().fg(Color::White).bg(Color::Black))
 }
 
 fn split_word(word: &str) -> (String, String, String) {
