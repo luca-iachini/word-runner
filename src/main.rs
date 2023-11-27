@@ -1,7 +1,7 @@
 use std::{path::PathBuf, thread, time::Duration};
 
 use clap::{Parser, ValueHint};
-use document::Document;
+use document::{Document, Page};
 mod document;
 use tui::{
     backend::{Backend, CrosstermBackend},
@@ -45,7 +45,7 @@ fn main() -> anyhow::Result<()> {
                     .constraints([Constraint::Length(3), Constraint::Percentage(100)].as_ref())
                     .split(f.size());
                 f.render_widget(current_word(word), chunks[0]);
-                f.render_widget(content(&page.content, page.number), chunks[1]);
+                f.render_widget(content(&page), chunks[1]);
             })?;
             thread::sleep(args.speed);
         }
@@ -53,12 +53,12 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn content(content: &str, page_number: usize) -> Paragraph {
-    let lines: Vec<Spans> = content.lines().map(|l| Spans::from(l)).collect();
+fn content(page: &Page) -> Paragraph {
+    let lines: Vec<Spans> = page.content.lines().map(|l| Spans::from(l)).collect();
     Paragraph::new(lines)
         .block(
             Block::default()
-                .title(format!("Page {}", page_number))
+                .title(format!("Page {}", page.number))
                 .borders(Borders::ALL),
         )
         .style(Style::default().fg(Color::White).bg(Color::Black))
