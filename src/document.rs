@@ -1,8 +1,4 @@
-use std::{
-    fs::File,
-    io::{BufReader, Seek},
-    path::Path,
-};
+use std::{fs::File, io::BufReader, path::Path};
 
 use anyhow::{anyhow, bail, Result};
 use epub::doc::NavPoint;
@@ -22,7 +18,7 @@ impl From<&NavPoint> for TableOfContentNode {
 }
 
 pub trait Document {
-    fn page(&mut self, number: usize) -> Result<Page>;
+    fn section(&mut self, number: usize) -> Result<Section>;
     fn cursor<'a>(&'a mut self) -> DocumentCursor<'a>;
     fn table_of_contents(&self) -> Vec<TableOfContentNode>;
 }
@@ -42,15 +38,15 @@ impl<'a> DocumentCursor<'a> {
         }
     }
 
-    pub fn current_page(&mut self) -> Option<Page> {
-        self.doc.page(self.page_index).ok()
+    pub fn current_section(&mut self) -> Option<Section> {
+        self.doc.section(self.page_index).ok()
     }
 
     pub fn current_word(&mut self) -> Option<String> {
-        self.current_page()?.word(self.word_index)
+        self.current_section()?.word(self.word_index)
     }
 
-    pub fn next_page(&mut self) {
+    pub fn next_section(&mut self) {
         self.page_index += 1;
     }
 
@@ -60,12 +56,12 @@ impl<'a> DocumentCursor<'a> {
 }
 
 #[derive(Debug, Default, Clone)]
-pub struct Page {
+pub struct Section {
     pub number: usize,
     pub content: String,
 }
 
-impl Page {
+impl Section {
     fn new(number: usize, content: impl ToString) -> Self {
         Self {
             number,
@@ -93,19 +89,19 @@ impl EpubDoc {
 }
 
 impl Document for EpubDoc {
-    fn page(&mut self, number: usize) -> Result<Page> {
-        let page_id = self.doc.spine.get(number);
-        let page_id = match page_id {
+    fn section(&mut self, number: usize) -> Result<Section> {
+        let section_id = self.doc.spine.get(number);
+        let section_id = match section_id {
             Some(id) => id.to_string(),
             None => bail!("page id not found"),
         };
         let (content, _mime) = self
             .doc
-            .get_resource(&page_id)
+            .get_resource(&section_id)
             .ok_or(anyhow!("no resource"))?;
         let content = String::from_utf8(content)?;
         let content = html2text::from_read(content.as_bytes(), 100);
-        Ok(Page::new(number, content))
+        Ok(Section::new(number, content))
     }
 
     fn table_of_contents(&self) -> Vec<TableOfContentNode> {
@@ -124,8 +120,8 @@ mod test {
     use std::path::Path;
 
     #[rstest]
-    fn it_gets_a_page(mut epub: EpubDoc, content: &str) {
-        let page = epub.page(2);
+    fn it_gets_a_section(mut epub: EpubDoc, content: &str) {
+        let page = epub.section(2);
 
         let_assert!(Ok(page) = page);
         check!(page.number == 2);

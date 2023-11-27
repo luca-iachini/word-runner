@@ -1,7 +1,10 @@
-use std::{path::PathBuf, thread, time::Duration};
+use std::{
+    path::PathBuf,
+    time::{Duration, SystemTime},
+};
 
 use clap::{Parser, ValueHint};
-use document::{Document, DocumentCursor, Page, TableOfContentNode};
+use document::{Document, DocumentCursor, Section, TableOfContentNode};
 mod document;
 use ratatui::{
     backend::CrosstermBackend,
@@ -27,31 +30,46 @@ struct Model<'a> {
     cursor: DocumentCursor<'a>,
     table_of_contents: Vec<TableOfContentNode>,
     table_of_contents_state: TreeState<String>,
+    last_word_change: SystemTime,
+    speed: Duration,
 }
 
 #[derive(PartialEq)]
 enum Message {
     Quit,
     NextWord,
-    NextPage,
+    NextSection,
 }
 
 fn update(model: &mut Model, msg: Message) -> Option<Message> {
     match msg {
-        Message::Quit => model.should_quit = true, // You can handle cleanup and exit here
-        Message::NextWord => model.cursor.next_word(),
-        Message::NextPage => model.cursor.next_page(),
-    };
-    None
+        Message::Quit => {
+            model.should_quit = true;
+            None
+        }
+        Message::NextWord => {
+            model.cursor.next_word();
+            model.last_word_change = SystemTime::now();
+            if model.cursor.current_word().is_none() {
+                Some(Message::NextSection)
+            } else {
+                None
+            }
+        }
+        Message::NextSection => {
+            model.cursor.next_section();
+            None
+        }
+    }
 }
 
 fn view(model: &mut Model, f: &mut Frame) {
-    let word = model.cursor.current_word().unwrap_or("ciao".to_string());
+    let word = model.cursor.current_word().unwrap_or_default();
     let page = model
         .cursor
-        .current_page()
+        .current_section()
         .map(|p| p.content)
-        .unwrap_or("ciao".to_string());
+        .unwrap_or_default();
     let main_layout = Layout::default()
         .direction(Direction::Vertical)
         .margin(1)
@@ -70,20 +88,24 @@ fn view(model: &mut Model, f: &mut Frame) {
     f.render_widget(content(&page), content_layout[1]);
 }
 
-fn handle_event(_: &Model) -> anyhow::Result<Option<Message>> {
-    let message = if crossterm::event::poll(std::time::Duration::from_millis(250))? {
-        if let crossterm::event::Event::Key(key) = crossterm::event::read()? {
-            match key.code {
-                crossterm::event::KeyCode::Char('q') => Message::Quit,
-                _ => return Ok(None),
+fn handle_event(model: &Model) -> anyhow::Result<Option<Message>> {
+    if model.last_word_change.elapsed().unwrap() >= model.speed {
+        Ok(Some(Message::NextWord))
+    } else {
+        let message = if crossterm::event::poll(std::time::Duration::from_millis(250))? {
+            if let crossterm::event::Event::Key(key) = crossterm::event::read()? {
+                match key.code {
+                    crossterm::event::KeyCode::Char('q') => Message::Quit,
+                    _ => return Ok(None),
+                }
+            } else {
+                return Ok(None);
             }
         } else {
             return Ok(None);
-        }
-    } else {
-        return Ok(None);
-    };
-    Ok(Some(message))
+        };
+        Ok(Some(message))
+    }
 }
 
 fn parse_speed(arg: &str) -> Result<std::time::Duration, std::num::ParseIntError> {
@@ -106,6 +128,8 @@ fn main() -> anyhow::Result<()> {
         cursor: doc.cursor(),
         table_of_contents,
         table_of_contents_state: TreeState::default(),
+        last_word_change: SystemTime::now(),
+        speed: args.speed,
     };
     loop {
         // Render the current view
@@ -141,13 +165,18 @@ fn content(page: &str) -> Paragraph {
 }
 
 fn current_word(word: impl ToString) -> Paragraph<'static> {
-    let (first_half, center, second_half) = split_word(word.to_string().as_str());
-    let word_text: Line = vec![
-        Span::raw(first_half),
-        Span::styled(center, Style::default().fg(Color::Red)),
-        Span::raw(second_half),
-    ]
-    .into();
+    let word = word.to_string();
+    let word_text: Line = if word.is_empty() {
+        Line::raw("")
+    } else {
+        let (first_half, center, second_half) = split_word(word.to_string().as_str());
+        vec![
+            Span::raw(first_half),
+            Span::styled(center, Style::default().fg(Color::Red)),
+            Span::raw(second_half),
+        ]
+        .into()
+    };
     Paragraph::new(word_text)
         .alignment(Alignment::Center)
         .block(
