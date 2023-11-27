@@ -44,6 +44,8 @@ enum Message {
     Quit,
     NextWord,
     NextSection,
+    IncreaseSpeed,
+    DecreaseSpeed,
 }
 
 fn update(model: &mut Model, msg: Message) -> Option<Message> {
@@ -63,6 +65,14 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
         }
         Message::NextSection => {
             model.cursor.next_section();
+            None
+        }
+        Message::IncreaseSpeed => {
+            model.speed -= Duration::from_millis(25);
+            None
+        }
+        Message::DecreaseSpeed => {
+            model.speed += Duration::from_millis(25);
             None
         }
     }
@@ -135,6 +145,8 @@ fn handle_event(model: &Model) -> anyhow::Result<Option<Message>> {
         if let crossterm::event::Event::Key(key) = crossterm::event::read()? {
             match key.code {
                 crossterm::event::KeyCode::Char('q') => Ok(Some(Message::Quit)),
+                crossterm::event::KeyCode::Right => Ok(Some(Message::IncreaseSpeed)),
+                crossterm::event::KeyCode::Left => Ok(Some(Message::DecreaseSpeed)),
                 _ => Ok(None),
             }
         } else {
