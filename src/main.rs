@@ -3,15 +3,16 @@ use std::{path::PathBuf, thread, time::Duration};
 use clap::{Parser, ValueHint};
 use document::{Document, Page};
 mod document;
-use tui::{
-    backend::{Backend, CrosstermBackend},
+use ratatui::{
+    backend::CrosstermBackend,
     layout::Layout,
-    layout::{Alignment, Constraint, Direction, Rect},
+    layout::{Alignment, Constraint, Direction},
     style::{Color, Style},
-    text::{Span, Spans, Text},
+    text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
-    Frame, Terminal,
+    Terminal,
 };
+use tui_tree_widget::{Tree, TreeItem};
 
 #[derive(Parser)]
 struct Args {
@@ -53,8 +54,15 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
+fn table_of_contents(document: &impl Document) -> Tree<&str> {
+    let item = TreeItem::new_leaf("l", "leaf");
+    Tree::new(vec![item])
+        .expect("all item identifiers are unique")
+        .block(Block::default().title("ciao").borders(Borders::ALL))
+}
+
 fn content(page: &Page) -> Paragraph {
-    let lines: Vec<Spans> = page.content.lines().map(|l| Spans::from(l)).collect();
+    let lines: Vec<Line> = page.content.lines().map(|l| Line::raw(l)).collect();
     Paragraph::new(lines)
         .block(
             Block::default()
@@ -66,7 +74,7 @@ fn content(page: &Page) -> Paragraph {
 
 fn current_word(word: &str) -> Paragraph {
     let (first_half, center, second_half) = split_word(word);
-    let word_text: Spans = vec![
+    let word_text: Line = vec![
         Span::raw(first_half),
         Span::styled(center, Style::default().fg(Color::Red)),
         Span::raw(second_half),

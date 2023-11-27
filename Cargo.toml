@@ -6,11 +6,12 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tui = "0.19"
-crossterm = "0.25"
-html2text = "0.4.4"
-epub = "1.2.4"
+crossterm = "0.27"
+html2text = "0.6.0"
+epub = "2.1.1"
 anyhow = "1.0.66"
 assert2 = "0.3.7"
 rstest = "0.18.2"
 clap = { version = "4.4.8", features = ["derive"] }
+tui-tree-widget = "0.15.0"
+ratatui = "0.24.0"

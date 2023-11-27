@@ -1,10 +1,30 @@
-use std::{fs::File, io::BufReader, path::Path};
+use std::{
+    fs::File,
+    io::{BufReader, Seek},
+    path::Path,
+};
 
-use anyhow::{bail, Result};
+use anyhow::{anyhow, bail, Result};
+use epub::doc::NavPoint;
+
+struct TableContentNode {
+    name: String,
+    content: Vec<TableContentNode>,
+}
+
+impl From<&NavPoint> for TableContentNode {
+    fn from(value: &NavPoint) -> Self {
+        Self {
+            name: value.label.clone(),
+            content: value.children.iter().map(Into::into).collect(),
+        }
+    }
+}
 
 pub trait Document {
     fn page(&mut self, number: usize) -> Result<Page>;
     fn pages<'a>(&'a mut self) -> PagesIterator<'a>;
+    fn table_of_contents(&self) -> Vec<TableContentNode>;
 }
 
 pub struct PagesIterator<'a> {
@@ -22,7 +42,7 @@ impl<'a> Iterator for PagesIterator<'a> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default, Clone)]
 pub struct Page {
     pub number: usize,
     pub content: String,
@@ -77,7 +97,10 @@ impl Document for EpubDoc {
             Some(id) => id.to_string(),
             None => bail!("page id not found"),
         };
-        let content = self.doc.get_resource(&page_id)?;
+        let (content, _mime) = self
+            .doc
+            .get_resource(&page_id)
+            .ok_or(anyhow!("no resource"))?;
         let content = String::from_utf8(content)?;
         let content = html2text::from_read(content.as_bytes(), 100);
         Ok(Page::new(number, content))
@@ -88,6 +111,10 @@ impl Document for EpubDoc {
             index: 0,
             document: Box::new(self),
         }
+    }
+
+    fn table_of_contents(&self) -> Vec<TableContentNode> {
+        self.doc.toc.iter().map(Into::into).collect()
     }
 }
 
