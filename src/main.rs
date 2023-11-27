@@ -89,22 +89,20 @@ fn view(model: &mut Model, f: &mut Frame) {
 }
 
 fn handle_event(model: &Model) -> anyhow::Result<Option<Message>> {
-    if model.last_word_change.elapsed().unwrap() >= model.speed {
-        Ok(Some(Message::NextWord))
-    } else {
-        let message = if crossterm::event::poll(std::time::Duration::from_millis(250))? {
-            if let crossterm::event::Event::Key(key) = crossterm::event::read()? {
-                match key.code {
-                    crossterm::event::KeyCode::Char('q') => Message::Quit,
-                    _ => return Ok(None),
-                }
-            } else {
-                return Ok(None);
+    if crossterm::event::poll(std::time::Duration::from_millis(250))? {
+        if let crossterm::event::Event::Key(key) = crossterm::event::read()? {
+            match key.code {
+                crossterm::event::KeyCode::Char('q') => Ok(Some(Message::Quit)),
+                _ => Ok(None),
             }
         } else {
-            return Ok(None);
-        };
-        Ok(Some(message))
+            Ok(None)
+        }
+    } else {
+        if model.last_word_change.elapsed().unwrap() >= model.speed {
+            return Ok(Some(Message::NextWord));
+        }
+        Ok(None)
     }
 }
 
