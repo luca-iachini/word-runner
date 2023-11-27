@@ -42,7 +42,7 @@ fn main() -> anyhow::Result<()> {
                 let chunks = Layout::default()
                     .direction(Direction::Vertical)
                     .margin(1)
-                    .constraints([Constraint::Percentage(20), Constraint::Percentage(80)].as_ref())
+                    .constraints([Constraint::Length(3), Constraint::Percentage(100)].as_ref())
                     .split(f.size());
                 f.render_widget(current_word(word), chunks[0]);
                 f.render_widget(content(&page.content, page.number), chunks[1]);
@@ -54,7 +54,8 @@ fn main() -> anyhow::Result<()> {
 }
 
 fn content(content: &str, page_number: usize) -> Paragraph {
-    Paragraph::new(Span::raw(content))
+    let lines: Vec<Spans> = content.lines().map(|l| Spans::from(l)).collect();
+    Paragraph::new(lines)
         .block(
             Block::default()
                 .title(format!("Page {}", page_number))
