@@ -208,6 +208,8 @@ fn handle_event<D: Document>(model: &Model<D>) -> anyhow::Result<Option<Message>
 }
 
 fn main() -> anyhow::Result<()> {
+    initialize_panic_handler();
+
     let args = Args::parse();
 
     crossterm::terminal::enable_raw_mode()?;
