@@ -24,25 +24,35 @@ pub trait Document {
 
 pub struct DocumentCursor<D: Document> {
     doc: D,
-    page_index: usize,
+    section_index: usize,
     word_index: usize,
+    line_index: usize,
 }
 
 impl<D: Document> DocumentCursor<D> {
     pub fn new(doc: D) -> Self {
         Self {
             doc,
-            page_index: 0,
+            section_index: 0,
             word_index: 0,
+            line_index: 0,
         }
     }
 
     pub fn current_section(&mut self) -> Option<Section> {
-        self.doc.section(self.page_index).ok()
+        self.doc.section(self.section_index).ok()
+    }
+
+    pub fn current_line(&mut self) -> Option<Line> {
+        self.current_section()?.line(self.line_index)
     }
 
     pub fn current_word(&mut self) -> Option<String> {
         self.current_section()?.word(self.word_index)
+    }
+
+    pub fn line_index(&self) -> usize {
+        self.line_index
     }
 
     pub fn word_index(&self) -> usize {
@@ -51,20 +61,52 @@ impl<D: Document> DocumentCursor<D> {
 
     pub fn prev_section(&mut self) {
         self.word_index = 0;
-        self.page_index = self.page_index.saturating_sub(1);
+        self.line_index = 0;
+        self.section_index = self.section_index.saturating_sub(1);
     }
 
     pub fn prev_word(&mut self) {
         self.word_index = self.word_index.saturating_sub(1);
+        let start_of_line = self
+            .current_line()
+            .map(|l| l.word_indexes.1)
+            .unwrap_or_default();
+        if self.word_index < start_of_line {
+            self.prev_line();
+        }
     }
 
     pub fn next_section(&mut self) {
         self.word_index = 0;
-        self.page_index += 1;
+        self.line_index = 0;
+        self.section_index += 1;
     }
 
     pub fn next_word(&mut self) {
         self.word_index += 1;
+        let end_of_line = self
+            .current_line()
+            .map(|l| l.word_indexes.1)
+            .unwrap_or_default();
+        if self.word_index > end_of_line {
+            self.next_line();
+        }
+    }
+
+    pub fn next_line(&mut self) {
+        self.line_index += 1;
+        self.word_index = self
+            .current_line()
+            .map(|l| l.word_indexes.0)
+            .unwrap_or_default();
+    }
+
+    pub fn prev_line(&mut self) {
+        self.line_index = self.line_index.saturating_sub(1);
+        self.word_index = self
+            .current_line()
+            .map(|l| l.word_indexes.0)
+            .unwrap_or_default();
     }
 }
 
@@ -81,12 +123,37 @@ impl Section {
             content: content.to_string(),
         }
     }
+
+    pub fn line(&self, index: usize) -> Option<Line> {
+        let start_word_index = 1 + self
+            .content
+            .lines()
+            .take(index)
+            .map(|l| l.split_whitespace().count())
+            .sum::<usize>();
+        let content = self.content.lines().nth(index)?.to_string();
+        let words = content.split_whitespace().count();
+        Some(Line {
+            index,
+            word_indexes: (start_word_index, start_word_index + words),
+            words,
+            content,
+        })
+    }
+
     pub fn word(&self, index: usize) -> Option<String> {
         self.content
             .split_whitespace()
             .nth(index)
             .map(ToString::to_string)
     }
+}
+
+pub struct Line {
+    pub index: usize,
+    pub word_indexes: (usize, usize),
+    pub words: usize,
+    pub content: String,
 }
 
 pub struct EpubDoc {

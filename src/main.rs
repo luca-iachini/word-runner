@@ -110,7 +110,10 @@ fn view<D: Document>(model: &mut Model<D>, f: &mut Frame) {
         content_layout[0],
         &mut model.table_of_contents_state,
     );
-    f.render_widget(content(&page, model.cursor.word_index()), content_layout[1]);
+    f.render_widget(
+        content(&page, model.cursor.word_index(), model.cursor.line_index()),
+        content_layout[1],
+    );
 }
 
 fn table_of_contents(content: &[TableOfContentNode]) -> Tree<String> {
@@ -124,14 +127,12 @@ fn table_of_contents(content: &[TableOfContentNode]) -> Tree<String> {
         )
 }
 
-fn content(page: &str, current_word: usize) -> Paragraph {
+fn content(section: &str, current_word: usize, current_line: usize) -> Paragraph {
     let mut lines: Vec<Line> = vec![];
     let mut words = 0;
-    let mut current_line = 0;
-    for (i, l) in page.lines().enumerate() {
+    for (i, l) in section.lines().enumerate() {
         let split: Vec<_> = l.trim().split_whitespace().collect();
-        let line = if current_word >= words && current_word < words + split.len() {
-            current_line = i;
+        let line = if i == current_line {
             let line: Line = vec![
                 Span::raw(split[..current_word - words].join(" ")),
                 Span::raw(" "),
