@@ -49,7 +49,17 @@ impl<D: Document> DocumentCursor<D> {
         self.word_index
     }
 
+    pub fn prev_section(&mut self) {
+        self.word_index = 0;
+        self.page_index = self.page_index.saturating_sub(1);
+    }
+
+    pub fn prev_word(&mut self) {
+        self.word_index = self.word_index.saturating_sub(1);
+    }
+
     pub fn next_section(&mut self) {
+        self.word_index = 0;
         self.page_index += 1;
     }
 

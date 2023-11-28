@@ -44,6 +44,8 @@ enum Message {
     Quit,
     NextWord,
     NextSection,
+    PrevSection,
+    PrevWord,
     IncreaseSpeed,
     DecreaseSpeed,
 }
@@ -68,11 +70,19 @@ fn update<D: Document>(model: &mut Model<D>, msg: Message) -> Option<Message> {
             None
         }
         Message::IncreaseSpeed => {
-            model.speed -= Duration::from_millis(25);
+            model.speed = model.speed.saturating_sub(Duration::from_millis(25));
             None
         }
         Message::DecreaseSpeed => {
-            model.speed += Duration::from_millis(25);
+            model.speed = model.speed.saturating_add(Duration::from_millis(25));
+            None
+        }
+        Message::PrevSection => {
+            model.cursor.prev_section();
+            None
+        }
+        Message::PrevWord => {
+            model.cursor.prev_word();
             None
         }
     }
@@ -117,9 +127,11 @@ fn table_of_contents(content: &[TableOfContentNode]) -> Tree<String> {
 fn content(page: &str, current_word: usize) -> Paragraph {
     let mut lines: Vec<Line> = vec![];
     let mut words = 0;
-    for l in page.lines() {
+    let mut current_line = 0;
+    for (i, l) in page.lines().enumerate() {
         let split: Vec<_> = l.trim().split_whitespace().collect();
         let line = if current_word >= words && current_word < words + split.len() {
+            current_line = i;
             let line: Line = vec![
                 Span::raw(split[..current_word - words].join(" ")),
                 Span::raw(" "),
@@ -135,8 +147,12 @@ fn content(page: &str, current_word: usize) -> Paragraph {
         } else {
             Line::raw(l)
         };
+
         lines.push(line);
         words += split.len();
+    }
+    if current_line > 3 {
+        lines = lines.into_iter().skip(current_line - 3).collect();
     }
     Paragraph::new(lines)
         .block(Block::default().title("Content").borders(Borders::ALL))
@@ -171,8 +187,12 @@ fn handle_event<D: Document>(model: &Model<D>) -> anyhow::Result<Option<Message>
         if let crossterm::event::Event::Key(key) = crossterm::event::read()? {
             match key.code {
                 crossterm::event::KeyCode::Char('q') => Ok(Some(Message::Quit)),
-                crossterm::event::KeyCode::Right => Ok(Some(Message::IncreaseSpeed)),
-                crossterm::event::KeyCode::Left => Ok(Some(Message::DecreaseSpeed)),
+                crossterm::event::KeyCode::Right => Ok(Some(Message::NextWord)),
+                crossterm::event::KeyCode::Left => Ok(Some(Message::PrevWord)),
+                crossterm::event::KeyCode::Down => Ok(Some(Message::NextSection)),
+                crossterm::event::KeyCode::Up => Ok(Some(Message::PrevSection)),
+                crossterm::event::KeyCode::PageUp => Ok(Some(Message::IncreaseSpeed)),
+                crossterm::event::KeyCode::PageDown => Ok(Some(Message::DecreaseSpeed)),
                 _ => Ok(None),
             }
         } else {
