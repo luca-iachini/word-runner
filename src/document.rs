@@ -33,7 +33,7 @@ impl<D: Document> DocumentCursor<D> {
     pub fn new(doc: D) -> Self {
         Self {
             doc,
-            section_index: 1,
+            section_index: 0,
             word_index: 0,
             line_index: 0,
         }
@@ -172,7 +172,7 @@ impl EpubDoc {
 
 impl Document for EpubDoc {
     fn section(&mut self, number: usize) -> Result<Section> {
-        let section_id = self.doc.spine.get(number);
+        let section_id = self.doc.spine.get(number + 1);
         let section_id = match section_id {
             Some(id) => id.to_string(),
             None => bail!("page id not found"),

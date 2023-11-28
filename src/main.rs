@@ -42,10 +42,12 @@ struct Model<D: Document> {
 #[derive(PartialEq)]
 enum Message {
     Quit,
-    NextWord,
-    NextSection,
-    PrevSection,
     PrevWord,
+    NextWord,
+    PrevLine,
+    NextLine,
+    PrevSection,
+    NextSection,
     IncreaseSpeed,
     DecreaseSpeed,
 }
@@ -54,6 +56,10 @@ fn update<D: Document>(model: &mut Model<D>, msg: Message) -> Option<Message> {
     match msg {
         Message::Quit => {
             model.should_quit = true;
+            None
+        }
+        Message::PrevWord => {
+            model.cursor.prev_word();
             None
         }
         Message::NextWord => {
@@ -65,24 +71,28 @@ fn update<D: Document>(model: &mut Model<D>, msg: Message) -> Option<Message> {
                 None
             }
         }
-        Message::NextSection => {
-            model.cursor.next_section();
+        Message::PrevLine => {
+            model.cursor.prev_line();
             None
         }
-        Message::IncreaseSpeed => {
-            model.speed = model.speed.saturating_sub(Duration::from_millis(25));
-            None
-        }
-        Message::DecreaseSpeed => {
-            model.speed = model.speed.saturating_add(Duration::from_millis(25));
+        Message::NextLine => {
+            model.cursor.next_line();
             None
         }
         Message::PrevSection => {
             model.cursor.prev_section();
             None
         }
-        Message::PrevWord => {
-            model.cursor.prev_word();
+        Message::NextSection => {
+            model.cursor.next_section();
+            None
+        }
+        Message::DecreaseSpeed => {
+            model.speed = model.speed.saturating_add(Duration::from_millis(25));
+            None
+        }
+        Message::IncreaseSpeed => {
+            model.speed = model.speed.saturating_sub(Duration::from_millis(25));
             None
         }
     }
@@ -190,10 +200,12 @@ fn handle_event<D: Document>(model: &Model<D>) -> anyhow::Result<Option<Message>
                 crossterm::event::KeyCode::Char('q') => Ok(Some(Message::Quit)),
                 crossterm::event::KeyCode::Right => Ok(Some(Message::NextWord)),
                 crossterm::event::KeyCode::Left => Ok(Some(Message::PrevWord)),
-                crossterm::event::KeyCode::Down => Ok(Some(Message::NextSection)),
-                crossterm::event::KeyCode::Up => Ok(Some(Message::PrevSection)),
-                crossterm::event::KeyCode::PageUp => Ok(Some(Message::IncreaseSpeed)),
-                crossterm::event::KeyCode::PageDown => Ok(Some(Message::DecreaseSpeed)),
+                crossterm::event::KeyCode::Up => Ok(Some(Message::PrevLine)),
+                crossterm::event::KeyCode::Down => Ok(Some(Message::NextLine)),
+                crossterm::event::KeyCode::PageDown => Ok(Some(Message::PrevSection)),
+                crossterm::event::KeyCode::PageUp => Ok(Some(Message::NextSection)),
+                crossterm::event::KeyCode::Char('+') => Ok(Some(Message::IncreaseSpeed)),
+                crossterm::event::KeyCode::Char('-') => Ok(Some(Message::DecreaseSpeed)),
                 _ => Ok(None),
             }
         } else {
