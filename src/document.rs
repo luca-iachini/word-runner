@@ -88,7 +88,7 @@ impl<D: Document> DocumentCursor<D> {
             .current_line()
             .map(|l| l.word_indexes.1)
             .unwrap_or_default();
-        if self.word_index > end_of_line {
+        if dbg!(self.word_index) >= dbg!(end_of_line) {
             self.next_line();
         }
     }
@@ -125,12 +125,17 @@ impl Section {
     }
 
     pub fn line(&self, index: usize) -> Option<Line> {
-        let start_word_index = 1 + self
+        let start_word_index = self
             .content
             .lines()
             .take(index)
             .map(|l| l.split_whitespace().count())
             .sum::<usize>();
+        let start_word_index = if index == 0 {
+            start_word_index
+        } else {
+            start_word_index + 1
+        };
         let content = self.content.lines().nth(index)?.to_string();
         let words = content.split_whitespace().count();
         Some(Line {
@@ -203,6 +208,35 @@ mod test {
         let_assert!(Ok(page) = page);
         check!(page.number == 2);
         check!(page.content == content);
+    }
+
+    #[rstest]
+    fn it_gets_current_word(epub: EpubDoc) {
+        let mut cursor = DocumentCursor::new(epub);
+        cursor.next_section();
+        cursor.next_section();
+        //cursor.next_word();
+        assert_eq!(cursor.current_word(), Some("[Dedication][1]".to_string()));
+    }
+
+    #[rstest]
+    fn it_gets_next_word(epub: EpubDoc) {
+        let mut cursor = DocumentCursor::new(epub);
+        cursor.next_section();
+        cursor.next_section();
+        cursor.next_word();
+        assert_eq!(cursor.current_word(), Some("For".to_string()));
+    }
+
+    #[rstest]
+    fn it_go_next_lines(epub: EpubDoc) {
+        let mut cursor = DocumentCursor::new(epub);
+        cursor.next_section();
+        cursor.next_section();
+        cursor.next_word();
+        let_assert!(Some(line) = cursor.current_line());
+        assert_eq!(line.word_indexes, (1, 2));
+        assert_eq!(line.index, 1);
     }
 
     #[fixture]
