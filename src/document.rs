@@ -33,7 +33,7 @@ impl<D: Document> DocumentCursor<D> {
     pub fn new(doc: D) -> Self {
         Self {
             doc,
-            section_index: 0,
+            section_index: 1,
             word_index: 0,
             line_index: 0,
         }
@@ -67,10 +67,7 @@ impl<D: Document> DocumentCursor<D> {
 
     pub fn prev_word(&mut self) {
         self.word_index = self.word_index.saturating_sub(1);
-        let start_of_line = self
-            .current_line()
-            .map(|l| l.word_indexes.1)
-            .unwrap_or_default();
+        let start_of_line = self.current_line().map(|l| l.word_indexes.1).unwrap();
         if self.word_index < start_of_line {
             self.prev_line();
         }
@@ -84,17 +81,17 @@ impl<D: Document> DocumentCursor<D> {
 
     pub fn next_word(&mut self) {
         self.word_index += 1;
-        let end_of_line = self
-            .current_line()
-            .map(|l| l.word_indexes.1)
-            .unwrap_or_default();
-        if dbg!(self.word_index) >= dbg!(end_of_line) {
+        let end_of_line = self.current_line().map(|l| l.word_indexes.1).unwrap();
+        if self.word_index > end_of_line {
             self.next_line();
         }
     }
 
     pub fn next_line(&mut self) {
         self.line_index += 1;
+        while self.current_line().map(|l| l.words == 0).unwrap_or(false) {
+            self.line_index += 1;
+        }
         self.word_index = self
             .current_line()
             .map(|l| l.word_indexes.0)
@@ -103,6 +100,9 @@ impl<D: Document> DocumentCursor<D> {
 
     pub fn prev_line(&mut self) {
         self.line_index = self.line_index.saturating_sub(1);
+        while self.current_line().map(|l| l.words == 0).unwrap_or(false) && self.line_index > 0 {
+            self.line_index = self.line_index.saturating_sub(1);
+        }
         self.word_index = self
             .current_line()
             .map(|l| l.word_indexes.0)
@@ -131,16 +131,12 @@ impl Section {
             .take(index)
             .map(|l| l.split_whitespace().count())
             .sum::<usize>();
-        let start_word_index = if index == 0 {
-            start_word_index
-        } else {
-            start_word_index + 1
-        };
+
         let content = self.content.lines().nth(index)?.to_string();
         let words = content.split_whitespace().count();
         Some(Line {
             index,
-            word_indexes: (start_word_index, start_word_index + words),
+            word_indexes: (start_word_index, start_word_index + words - 1),
             words,
             content,
         })
@@ -154,6 +150,7 @@ impl Section {
     }
 }
 
+#[derive(Debug)]
 pub struct Line {
     pub index: usize,
     pub word_indexes: (usize, usize),
@@ -220,23 +217,29 @@ mod test {
     }
 
     #[rstest]
-    fn it_gets_next_word(epub: EpubDoc) {
+    fn it_moves_between_words(epub: EpubDoc) {
         let mut cursor = DocumentCursor::new(epub);
         cursor.next_section();
         cursor.next_section();
         cursor.next_word();
         assert_eq!(cursor.current_word(), Some("For".to_string()));
+        cursor.prev_word();
+        assert_eq!(cursor.current_word(), Some("[Dedication][1]".to_string()));
     }
 
     #[rstest]
-    fn it_go_next_lines(epub: EpubDoc) {
+    fn it_moves_on_not_empty_lines(epub: EpubDoc) {
         let mut cursor = DocumentCursor::new(epub);
         cursor.next_section();
         cursor.next_section();
         cursor.next_word();
         let_assert!(Some(line) = cursor.current_line());
         assert_eq!(line.word_indexes, (1, 2));
-        assert_eq!(line.index, 1);
+        assert_eq!(line.index, 2);
+        cursor.prev_word();
+        let_assert!(Some(line) = cursor.current_line());
+        assert_eq!(line.word_indexes, (0, 0));
+        assert_eq!(line.index, 0);
     }
 
     #[fixture]
