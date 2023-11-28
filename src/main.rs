@@ -6,7 +6,6 @@ use std::{
 use clap::{Parser, ValueHint};
 use document::{Document, DocumentCursor, TableOfContentNode};
 mod document;
-use itertools::Itertools;
 use ratatui::{
     backend::CrosstermBackend,
     layout::Layout,
@@ -31,9 +30,9 @@ fn parse_speed(arg: &str) -> Result<std::time::Duration, std::num::ParseIntError
     Ok(std::time::Duration::from_millis(millis))
 }
 
-struct Model<'a> {
+struct Model<D: Document> {
     should_quit: bool,
-    cursor: DocumentCursor<'a>,
+    cursor: DocumentCursor<D>,
     table_of_contents: Vec<TableOfContentNode>,
     table_of_contents_state: TreeState<String>,
     last_word_change: SystemTime,
@@ -49,7 +48,7 @@ enum Message {
     DecreaseSpeed,
 }
 
-fn update(model: &mut Model, msg: Message) -> Option<Message> {
+fn update<D: Document>(model: &mut Model<D>, msg: Message) -> Option<Message> {
     match msg {
         Message::Quit => {
             model.should_quit = true;
@@ -79,7 +78,7 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
     }
 }
 
-fn view(model: &mut Model, f: &mut Frame) {
+fn view<D: Document>(model: &mut Model<D>, f: &mut Frame) {
     let word = model.cursor.current_word().unwrap_or_default();
     let page = model
         .cursor
@@ -118,40 +117,26 @@ fn table_of_contents(content: &[TableOfContentNode]) -> Tree<String> {
 fn content(page: &str, current_word: usize) -> Paragraph {
     let mut lines: Vec<Line> = vec![];
     let mut words = 0;
-    let mut found = false;
-    let word_count = |l: &str| {
-        if l.trim().is_empty() {
-            0
-        } else {
-            l.trim().chars().filter(|c| c.is_whitespace()).count() + 1
-        }
-    };
     for l in page.lines() {
-        let mut split = l.split_whitespace().into_iter();
-        lines.push(if current_word < words + word_count(l) && !found {
+        let split: Vec<_> = l.trim().split_whitespace().collect();
+        let line = if current_word >= words && current_word < words + split.len() {
             let line: Line = vec![
-                Span::raw(
-                    split
-                        .clone()
-                        .take(current_word - words)
-                        .collect::<Vec<_>>()
-                        .join(" "),
-                ),
+                Span::raw(split[..current_word - words].join(" ")),
                 Span::raw(" "),
                 Span::styled(
-                    split.nth(current_word - words).unwrap_or_default(),
+                    split[current_word - words],
                     Style::default().bg(Color::LightYellow),
                 ),
                 Span::raw(" "),
-                Span::raw(split.collect::<Vec<_>>().join(" ")),
+                Span::raw(split[current_word - words + 1..].join(" ")),
             ]
             .into();
-            found = true;
             line
         } else {
             Line::raw(l)
-        });
-        words += word_count(l);
+        };
+        lines.push(line);
+        words += split.len();
     }
     Paragraph::new(lines)
         .block(Block::default().title("Content").borders(Borders::ALL))
@@ -181,7 +166,7 @@ fn current_word(word: impl ToString) -> Paragraph<'static> {
         .style(Style::default().fg(Color::White).bg(Color::Black))
 }
 
-fn handle_event(model: &Model) -> anyhow::Result<Option<Message>> {
+fn handle_event<D: Document>(model: &Model<D>) -> anyhow::Result<Option<Message>> {
     if crossterm::event::poll(std::time::Duration::from_millis(250))? {
         if let crossterm::event::Event::Key(key) = crossterm::event::read()? {
             match key.code {
@@ -209,11 +194,12 @@ fn main() -> anyhow::Result<()> {
 
     let mut terminal = Terminal::new(CrosstermBackend::new(std::io::stderr()))?;
 
-    let mut doc = document::EpubDoc::open(&args.path).expect("unable to open the epub");
+    let doc = document::EpubDoc::open(&args.path).expect("unable to open the epub");
     let table_of_contents = doc.table_of_contents();
+    let cursor = DocumentCursor::new(doc);
     let mut model = Model {
         should_quit: false,
-        cursor: doc.cursor(),
+        cursor,
         table_of_contents,
         table_of_contents_state: TreeState::default(),
         last_word_change: SystemTime::now(),

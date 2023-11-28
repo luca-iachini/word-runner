@@ -19,20 +19,19 @@ impl From<&NavPoint> for TableOfContentNode {
 
 pub trait Document {
     fn section(&mut self, number: usize) -> Result<Section>;
-    fn cursor<'a>(&'a mut self) -> DocumentCursor<'a>;
     fn table_of_contents(&self) -> Vec<TableOfContentNode>;
 }
 
-pub struct DocumentCursor<'a> {
-    doc: Box<&'a mut dyn Document>,
+pub struct DocumentCursor<D: Document> {
+    doc: D,
     page_index: usize,
     word_index: usize,
 }
 
-impl<'a> DocumentCursor<'a> {
-    fn new(doc: &'a mut impl Document) -> Self {
+impl<D: Document> DocumentCursor<D> {
+    pub fn new(doc: D) -> Self {
         Self {
-            doc: Box::new(doc),
+            doc,
             page_index: 0,
             word_index: 0,
         }
@@ -110,9 +109,6 @@ impl Document for EpubDoc {
 
     fn table_of_contents(&self) -> Vec<TableOfContentNode> {
         self.doc.toc.iter().map(Into::into).collect()
-    }
-    fn cursor<'a>(&'a mut self) -> DocumentCursor<'a> {
-        DocumentCursor::new(self)
     }
 }
 
