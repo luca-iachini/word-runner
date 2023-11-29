@@ -30,6 +30,12 @@ fn parse_speed(arg: &str) -> Result<std::time::Duration, std::num::ParseIntError
     Ok(std::time::Duration::from_millis(millis))
 }
 
+#[derive(Debug, PartialEq)]
+enum Status {
+    Running,
+    Paused,
+}
+
 struct Model<D: Document> {
     should_quit: bool,
     cursor: DocumentCursor<D>,
@@ -37,6 +43,7 @@ struct Model<D: Document> {
     table_of_contents_state: TreeState<String>,
     last_word_change: SystemTime,
     speed: Duration,
+    status: Status,
 }
 
 #[derive(PartialEq)]
@@ -50,6 +57,7 @@ enum Message {
     NextSection,
     IncreaseSpeed,
     DecreaseSpeed,
+    ToggleStatus,
 }
 
 fn update<D: Document>(model: &mut Model<D>, msg: Message) -> Option<Message> {
@@ -95,6 +103,16 @@ fn update<D: Document>(model: &mut Model<D>, msg: Message) -> Option<Message> {
             model.speed = model.speed.saturating_sub(Duration::from_millis(25));
             None
         }
+        Message::ToggleStatus => match model.status {
+            Status::Running => {
+                model.status = Status::Paused;
+                None
+            }
+            Status::Paused => {
+                model.status = Status::Running;
+                Some(Message::NextWord)
+            }
+        },
     }
 }
 
@@ -226,13 +244,16 @@ fn handle_event<D: Document>(model: &Model<D>) -> anyhow::Result<Option<Message>
                 crossterm::event::KeyCode::PageUp => Ok(Some(Message::NextSection)),
                 crossterm::event::KeyCode::Char('+') => Ok(Some(Message::IncreaseSpeed)),
                 crossterm::event::KeyCode::Char('-') => Ok(Some(Message::DecreaseSpeed)),
+                crossterm::event::KeyCode::Char(' ') => Ok(Some(Message::ToggleStatus)),
                 _ => Ok(None),
             }
         } else {
             Ok(None)
         }
     } else {
-        if model.last_word_change.elapsed().unwrap() >= model.speed {
+        if model.status == Status::Running
+            && model.last_word_change.elapsed().unwrap() >= model.speed
+        {
             return Ok(Some(Message::NextWord));
         }
         Ok(None)
@@ -259,6 +280,7 @@ fn main() -> anyhow::Result<()> {
         table_of_contents_state: TreeState::default(),
         last_word_change: SystemTime::now(),
         speed: args.speed,
+        status: Status::Paused,
     };
     loop {
         // Render the current view

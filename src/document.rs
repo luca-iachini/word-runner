@@ -51,10 +51,6 @@ impl<D: Document> DocumentCursor<D> {
         self.current_section()?.word(self.word_index)
     }
 
-    pub fn line_index(&self) -> usize {
-        self.line_index
-    }
-
     pub fn word_index(&self) -> usize {
         self.word_index
     }
