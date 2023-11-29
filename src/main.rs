@@ -121,7 +121,11 @@ fn view<D: Document>(model: &mut Model<D>, f: &mut Frame) {
         &mut model.table_of_contents_state,
     );
     f.render_widget(
-        content(&page, model.cursor.word_index(), model.cursor.line_index()),
+        content(
+            &page,
+            model.cursor.word_index(),
+            model.cursor.current_line().unwrap(),
+        ),
         content_layout[1],
     );
 }
@@ -137,37 +141,47 @@ fn table_of_contents(content: &[TableOfContentNode]) -> Tree<String> {
         )
 }
 
-fn content(section: &str, current_word: usize, current_line: usize) -> Paragraph {
+fn content(section: &str, current_word: usize, current_line: document::Line) -> Paragraph {
     let mut lines: Vec<Line> = vec![];
-    let mut words = 0;
     for (i, l) in section.lines().enumerate() {
         let split: Vec<_> = l.trim().split_whitespace().collect();
-        let line = if i == current_line {
-            let line: Line = vec![
-                Span::raw(split[..current_word - words].join(" ")),
-                Span::raw(" "),
-                Span::styled(
-                    split[current_word - words],
-                    Style::default().bg(Color::LightYellow),
-                ),
-                Span::raw(" "),
-                Span::raw(split[current_word - words + 1..].join(" ")),
-            ]
-            .into();
+        let line = if i == current_line.index {
+            let line: Line = if current_word - current_line.word_indexes.0 > 0 {
+                let pos = current_word - current_line.word_indexes.0;
+                vec![
+                    Span::raw(split[..pos].join(" ")),
+                    Span::raw(" "),
+                    word_cursor(split[pos]),
+                    Span::raw(" "),
+                    Span::raw(split[pos + 1..].join(" ")),
+                ]
+                .into()
+            } else {
+                vec![
+                    word_cursor(split[0]),
+                    Span::raw(" "),
+                    Span::raw(split[1..].join(" ")),
+                ]
+                .into()
+            };
+
             line
         } else {
             Line::raw(l)
         };
 
         lines.push(line);
-        words += split.len();
     }
-    if current_line > 3 {
-        lines = lines.into_iter().skip(current_line - 3).collect();
+    if current_line.index > 3 {
+        lines = lines.into_iter().skip(current_line.index - 3).collect();
     }
     Paragraph::new(lines)
         .block(Block::default().title("Content").borders(Borders::ALL))
         .style(Style::default().fg(Color::White).bg(Color::Black))
+}
+
+fn word_cursor(word: &str) -> Span {
+    Span::styled(word, Style::default().bg(Color::LightYellow))
 }
 
 fn current_word(word: impl ToString) -> Paragraph<'static> {
