@@ -124,7 +124,7 @@ fn view<D: Document>(model: &mut Model<D>, f: &mut Frame) {
         content(
             &page,
             model.cursor.word_index(),
-            model.cursor.current_line().unwrap(),
+            model.cursor.current_line(),
         ),
         content_layout[1],
     );
@@ -141,40 +141,46 @@ fn table_of_contents(content: &[TableOfContentNode]) -> Tree<String> {
         )
 }
 
-fn content(section: &str, current_word: usize, current_line: document::Line) -> Paragraph {
+fn content(section: &str, current_word: usize, current_line: Option<document::Line>) -> Paragraph {
     let mut lines: Vec<Line> = vec![];
-    for (i, l) in section.lines().enumerate() {
-        let split: Vec<_> = l.trim().split_whitespace().collect();
-        let line = if i == current_line.index {
-            let line: Line = if current_word - current_line.word_indexes.0 > 0 {
-                let pos = current_word - current_line.word_indexes.0;
-                vec![
-                    Span::raw(split[..pos].join(" ")),
-                    Span::raw(" "),
-                    word_cursor(split[pos]),
-                    Span::raw(" "),
-                    Span::raw(split[pos + 1..].join(" ")),
-                ]
-                .into()
+    let mut index = 0;
+    if let Some(current_line) = current_line {
+        for l in section.lines() {
+            let split: Vec<_> = l.trim().split_whitespace().collect();
+            let line = if !l.is_empty() && index == current_line.index {
+                let line: Line = if current_word - current_line.word_indexes.0 > 0 {
+                    let pos = current_word - current_line.word_indexes.0;
+                    vec![
+                        Span::raw(split[..pos].join(" ")),
+                        Span::raw(" "),
+                        word_cursor(split[pos]),
+                        Span::raw(" "),
+                        Span::raw(split[pos + 1..].join(" ")),
+                    ]
+                    .into()
+                } else {
+                    vec![
+                        word_cursor(split[0]),
+                        Span::raw(" "),
+                        Span::raw(split[1..].join(" ")),
+                    ]
+                    .into()
+                };
+
+                line
             } else {
-                vec![
-                    word_cursor(split[0]),
-                    Span::raw(" "),
-                    Span::raw(split[1..].join(" ")),
-                ]
-                .into()
+                Line::raw(l)
             };
-
-            line
-        } else {
-            Line::raw(l)
-        };
-
-        lines.push(line);
+            lines.push(line);
+            if !l.is_empty() {
+                index += 1;
+            }
+        }
+        if current_line.index > 3 {
+            lines = lines.into_iter().skip(current_line.index - 3).collect();
+        }
     }
-    if current_line.index > 3 {
-        lines = lines.into_iter().skip(current_line.index - 3).collect();
-    }
+
     Paragraph::new(lines)
         .block(Block::default().title("Content").borders(Borders::ALL))
         .style(Style::default().fg(Color::White).bg(Color::Black))

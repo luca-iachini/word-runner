@@ -67,7 +67,7 @@ impl<D: Document> DocumentCursor<D> {
 
     pub fn prev_word(&mut self) {
         self.word_index = self.word_index.saturating_sub(1);
-        let start_of_line = self.current_line().map(|l| l.word_indexes.1).unwrap();
+        let start_of_line = self.current_line().map(|l| l.word_indexes.0).unwrap();
         if self.word_index < start_of_line {
             self.prev_line();
         }
@@ -80,17 +80,21 @@ impl<D: Document> DocumentCursor<D> {
     }
 
     pub fn next_word(&mut self) {
-        self.word_index += 1;
-        let end_of_line = self.current_line().map(|l| l.word_indexes.1).unwrap();
-        if self.word_index > end_of_line {
+        if let Some(end_of_line) = self.current_line().map(|l| l.word_indexes.1) {
+            self.word_index += 1;
+            if self.word_index > end_of_line {
+                self.next_line();
+            }
+        } else {
             self.next_line();
         }
     }
 
     pub fn next_line(&mut self) {
         self.line_index += 1;
-        while self.current_line().map(|l| l.words == 0).unwrap_or(false) {
-            self.line_index += 1;
+
+        if self.current_line().is_none() {
+            self.next_section()
         }
         self.word_index = self
             .current_line()
@@ -99,10 +103,12 @@ impl<D: Document> DocumentCursor<D> {
     }
 
     pub fn prev_line(&mut self) {
-        self.line_index = self.line_index.saturating_sub(1);
-        while self.current_line().map(|l| l.words == 0).unwrap_or(false) && self.line_index > 0 {
-            self.line_index = self.line_index.saturating_sub(1);
+        if self.line_index == 0 {
+            self.prev_section();
+            self.line_index = self.current_section().unwrap_or_default().lines().len();
+            return;
         }
+        self.line_index = self.line_index.saturating_sub(1);
         self.word_index = self
             .current_line()
             .map(|l| l.word_indexes.0)
@@ -125,21 +131,27 @@ impl Section {
     }
 
     pub fn line(&self, index: usize) -> Option<Line> {
-        let start_word_index = self
-            .content
-            .lines()
-            .take(index)
-            .map(|l| l.split_whitespace().count())
-            .sum::<usize>();
-
-        let content = self.content.lines().nth(index)?.to_string();
-        let words = content.split_whitespace().count();
-        Some(Line {
-            index,
-            word_indexes: (start_word_index, start_word_index + words - 1),
-            words,
-            content,
-        })
+        self.lines().get(index).cloned()
+    }
+    pub fn lines(&self) -> Vec<Line> {
+        let mut result = vec![];
+        let mut global_words_index = 0;
+        for (i, l) in self.content.lines().filter(|l| !l.is_empty()).enumerate() {
+            let words = l.split_whitespace().count();
+            let end_word_index = if words == 0 {
+                global_words_index
+            } else {
+                global_words_index + words - 1
+            };
+            result.push(Line {
+                index: i,
+                word_indexes: (global_words_index, end_word_index),
+                words,
+                content: l.to_string(),
+            });
+            global_words_index += words;
+        }
+        result
     }
 
     pub fn word(&self, index: usize) -> Option<String> {
@@ -150,7 +162,7 @@ impl Section {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Default)]
 pub struct Line {
     pub index: usize,
     pub word_indexes: (usize, usize),
