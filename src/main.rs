@@ -12,9 +12,10 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction},
     style::{Color, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph},
+    widgets::{Block, Borders, Paragraph, Scrollbar, ScrollbarOrientation},
     Frame, Terminal,
 };
+use strum;
 use tui_tree_widget::{Tree, TreeItem, TreeState};
 
 #[derive(Parser)]
@@ -30,10 +31,16 @@ fn parse_speed(arg: &str) -> Result<std::time::Duration, std::num::ParseIntError
     Ok(std::time::Duration::from_millis(millis))
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, strum::Display)]
 enum Status {
     Running,
     Paused,
+}
+
+#[derive(Debug, PartialEq, strum::Display)]
+enum Focus {
+    Content,
+    TableOfContents,
 }
 
 struct Model<D: Document> {
@@ -44,6 +51,7 @@ struct Model<D: Document> {
     last_word_change: SystemTime,
     speed: Duration,
     status: Status,
+    focus: Focus,
 }
 
 #[derive(PartialEq)]
@@ -58,6 +66,17 @@ enum Message {
     IncreaseSpeed,
     DecreaseSpeed,
     ToggleStatus,
+    ChangeFocus(Focus),
+    TableOfContentsMessage(TableOfContentsMessage),
+}
+
+#[derive(PartialEq)]
+enum TableOfContentsMessage {
+    Toggle,
+    Left,
+    Right,
+    Down,
+    Up,
 }
 
 fn update<D: Document>(model: &mut Model<D>, msg: Message) -> Option<Message> {
@@ -113,6 +132,20 @@ fn update<D: Document>(model: &mut Model<D>, msg: Message) -> Option<Message> {
                 Some(Message::NextWord)
             }
         },
+        Message::ChangeFocus(focus) => {
+            model.focus = focus;
+            None
+        }
+        Message::TableOfContentsMessage(msg) => {
+            match msg {
+                TableOfContentsMessage::Toggle => model.table_of_contents_state.toggle_selected(),
+                TableOfContentsMessage::Left => model.table_of_contents_state.key_left(),
+                TableOfContentsMessage::Right => model.table_of_contents_state.key_right(),
+                TableOfContentsMessage::Down => model.table_of_contents_state.key_down(&[]),
+                TableOfContentsMessage::Up => model.table_of_contents_state.key_up(&[]),
+            };
+            None
+        }
     }
 }
 
@@ -126,7 +159,14 @@ fn view<D: Document>(model: &mut Model<D>, f: &mut Frame) {
     let main_layout = Layout::default()
         .direction(Direction::Vertical)
         .margin(1)
-        .constraints([Constraint::Length(3), Constraint::Percentage(100)].as_ref())
+        .constraints(
+            [
+                Constraint::Max(3),
+                Constraint::Percentage(80),
+                Constraint::Max(3),
+            ]
+            .as_ref(),
+        )
         .split(f.size());
     let content_layout = Layout::default()
         .direction(Direction::Horizontal)
@@ -146,12 +186,14 @@ fn view<D: Document>(model: &mut Model<D>, f: &mut Frame) {
         ),
         content_layout[1],
     );
+    f.render_widget(status_bar(&model), main_layout[2])
 }
 
 fn table_of_contents(content: &[TableOfContentNode]) -> Tree<String> {
     let items = content.into_iter().map(Into::into).collect();
     Tree::new(items)
         .expect("all item identifiers are unique")
+        .highlight_style(Style::default().bg(Color::Yellow))
         .block(
             Block::default()
                 .title("Table of Contents")
@@ -231,21 +273,62 @@ fn current_word(word: impl ToString) -> Paragraph<'static> {
         .style(Style::default().fg(Color::White).bg(Color::Black))
 }
 
+fn status_bar<D: Document>(model: &Model<D>) -> Paragraph {
+    let status: Line = vec![
+        Span::raw("Status: "),
+        Span::raw(model.status.to_string()),
+        Span::raw(" Speed: "),
+        Span::raw(model.speed.as_millis().to_string()),
+        Span::raw(" Focus: "),
+        Span::raw(model.focus.to_string()),
+    ]
+    .into();
+    Paragraph::new(status).block(Block::default().title("Status").borders(Borders::ALL))
+}
+
 fn handle_event<D: Document>(model: &Model<D>) -> anyhow::Result<Option<Message>> {
     if crossterm::event::poll(std::time::Duration::from_millis(250))? {
         if let crossterm::event::Event::Key(key) = crossterm::event::read()? {
             match key.code {
                 crossterm::event::KeyCode::Char('q') => Ok(Some(Message::Quit)),
-                crossterm::event::KeyCode::Right => Ok(Some(Message::NextWord)),
-                crossterm::event::KeyCode::Left => Ok(Some(Message::PrevWord)),
-                crossterm::event::KeyCode::Up => Ok(Some(Message::PrevLine)),
-                crossterm::event::KeyCode::Down => Ok(Some(Message::NextLine)),
-                crossterm::event::KeyCode::PageUp => Ok(Some(Message::PrevSection)),
-                crossterm::event::KeyCode::PageDown => Ok(Some(Message::NextSection)),
-                crossterm::event::KeyCode::Char('+') => Ok(Some(Message::IncreaseSpeed)),
-                crossterm::event::KeyCode::Char('-') => Ok(Some(Message::DecreaseSpeed)),
-                crossterm::event::KeyCode::Char(' ') => Ok(Some(Message::ToggleStatus)),
-                _ => Ok(None),
+                crossterm::event::KeyCode::Char('t') => {
+                    Ok(Some(Message::ChangeFocus(Focus::TableOfContents)))
+                }
+                crossterm::event::KeyCode::Char('c') => {
+                    Ok(Some(Message::ChangeFocus(Focus::Content)))
+                }
+                _ => match model.focus {
+                    Focus::Content => match key.code {
+                        crossterm::event::KeyCode::Right => Ok(Some(Message::NextWord)),
+                        crossterm::event::KeyCode::Left => Ok(Some(Message::PrevWord)),
+                        crossterm::event::KeyCode::Up => Ok(Some(Message::PrevLine)),
+                        crossterm::event::KeyCode::Down => Ok(Some(Message::NextLine)),
+                        crossterm::event::KeyCode::PageUp => Ok(Some(Message::PrevSection)),
+                        crossterm::event::KeyCode::PageDown => Ok(Some(Message::NextSection)),
+                        crossterm::event::KeyCode::Char('+') => Ok(Some(Message::IncreaseSpeed)),
+                        crossterm::event::KeyCode::Char('-') => Ok(Some(Message::DecreaseSpeed)),
+                        crossterm::event::KeyCode::Char(' ') => Ok(Some(Message::ToggleStatus)),
+                        _ => Ok(None),
+                    },
+                    Focus::TableOfContents => match key.code {
+                        crossterm::event::KeyCode::Char('\n' | ' ') => Ok(Some(
+                            Message::TableOfContentsMessage(TableOfContentsMessage::Toggle),
+                        )),
+                        crossterm::event::KeyCode::Left => Ok(Some(
+                            Message::TableOfContentsMessage(TableOfContentsMessage::Left),
+                        )),
+                        crossterm::event::KeyCode::Right => Ok(Some(
+                            Message::TableOfContentsMessage(TableOfContentsMessage::Right),
+                        )),
+                        crossterm::event::KeyCode::Down => Ok(Some(
+                            Message::TableOfContentsMessage(TableOfContentsMessage::Down),
+                        )),
+                        crossterm::event::KeyCode::Up => Ok(Some(Message::TableOfContentsMessage(
+                            TableOfContentsMessage::Up,
+                        ))),
+                        _ => Ok(None),
+                    },
+                },
             }
         } else {
             Ok(None)
@@ -281,6 +364,7 @@ fn main() -> anyhow::Result<()> {
         last_word_change: SystemTime::now(),
         speed: args.speed,
         status: Status::Paused,
+        focus: Focus::Content,
     };
     loop {
         // Render the current view
