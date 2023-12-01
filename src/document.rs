@@ -26,8 +26,6 @@ impl From<&NavPoint> for TableOfContentNode {
     }
 }
 
-pub trait Document {}
-
 pub struct DocumentCursor {
     doc: EpubDoc,
     word_index: usize,
@@ -45,7 +43,7 @@ impl DocumentCursor {
         }
     }
 
-    pub fn current_section(&mut self) -> Option<&Section> {
+    pub fn current_section<'a>(&'a mut self) -> Option<&'a Section> {
         if self.current_section.is_none() {
             let current = self.doc.get_current()?;
             self.current_section = Some(Section::new(self.doc.get_current_page(), current.0))
@@ -53,7 +51,7 @@ impl DocumentCursor {
         self.current_section.as_ref()
     }
 
-    pub fn current_line(&mut self) -> Option<&Line> {
+    pub fn current_line<'a>(&'a mut self) -> Option<&'a Line> {
         self.current_section()?.line(self.line_index)
     }
 
@@ -77,7 +75,7 @@ impl DocumentCursor {
         self.doc.go_next();
     }
 
-    pub fn go_to_section(&mut self, section: usize) {
+    pub fn go_to_section(&mut self, _section: usize) {
         //TODO
         self.word_index = 0;
         self.line_index = 0;
@@ -141,7 +139,7 @@ pub struct Section {
 impl Section {
     fn new(number: usize, content: Vec<u8>) -> Self {
         let content = String::from_utf8(content).unwrap();
-        let lines = lines(content);
+        let lines = lines(content.clone());
         Self {
             number,
             content,
@@ -209,11 +207,9 @@ impl EpubDoc {
         Ok(Self(epub::doc::EpubDoc::new(path)?))
     }
     pub fn table_of_contents(&self) -> Vec<TableOfContentNode> {
-        self.table_of_contents().iter().map(Into::into).collect()
+        self.0.toc.iter().map(Into::into).collect()
     }
 }
-
-impl Document for EpubDoc {}
 
 #[cfg(test)]
 mod test {

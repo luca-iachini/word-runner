@@ -206,7 +206,12 @@ fn content(cursor: &mut document::DocumentCursor) -> Paragraph {
         .unwrap_or_default()
         .lines();
     if let Some(current_line) = cursor.current_line() {
-        for l in text_lines {
+        for l in cursor
+            .current_section()
+            .map(|c| c.content)
+            .unwrap_or_default()
+            .lines()
+        {
             let split: Vec<_> = l.trim().split_whitespace().collect();
             let line = if !l.is_empty() && index == current_line.index {
                 let line: Line = if cursor.word_index() - current_line.word_indexes.0 > 0 {
