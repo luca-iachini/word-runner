@@ -4,6 +4,7 @@ use anyhow::{anyhow, bail, Result};
 use epub::doc::NavPoint;
 
 pub struct TableOfContentNode {
+    pub index: usize,
     pub name: String,
     pub children: Vec<TableOfContentNode>,
 }
@@ -11,6 +12,7 @@ pub struct TableOfContentNode {
 impl From<&NavPoint> for TableOfContentNode {
     fn from(value: &NavPoint) -> Self {
         Self {
+            index: value.play_order,
             name: value.label.clone(),
             children: value.children.iter().map(Into::into).collect(),
         }
@@ -61,18 +63,24 @@ impl<D: Document> DocumentCursor<D> {
         self.section_index = self.section_index.saturating_sub(1);
     }
 
+    pub fn next_section(&mut self) {
+        self.word_index = 0;
+        self.line_index = 0;
+        self.section_index += 1;
+    }
+
+    pub fn go_to_section(&mut self, section: usize) {
+        self.section_index = section;
+        self.word_index = 0;
+        self.line_index = 0;
+    }
+
     pub fn prev_word(&mut self) {
         self.word_index = self.word_index.saturating_sub(1);
         let start_of_line = self.current_line().map(|l| l.word_indexes.0).unwrap();
         if self.word_index < start_of_line {
             self.prev_line();
         }
-    }
-
-    pub fn next_section(&mut self) {
-        self.word_index = 0;
-        self.line_index = 0;
-        self.section_index += 1;
     }
 
     pub fn next_word(&mut self) {

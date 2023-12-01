@@ -46,8 +46,8 @@ enum Focus {
 struct Model<D: Document> {
     should_quit: bool,
     cursor: DocumentCursor<D>,
-    table_of_contents: Vec<TreeItem<'static, String>>,
-    table_of_contents_state: TreeState<String>,
+    table_of_contents: Vec<TreeItem<'static, usize>>,
+    table_of_contents_state: TreeState<usize>,
     last_word_change: SystemTime,
     speed: Duration,
     status: Status,
@@ -72,7 +72,7 @@ enum Message {
 
 #[derive(PartialEq)]
 enum TableOfContentsMessage {
-    Toggle,
+    Select,
     Left,
     Right,
     Down,
@@ -138,7 +138,12 @@ fn update<D: Document>(model: &mut Model<D>, msg: Message) -> Option<Message> {
         }
         Message::TableOfContentsMessage(msg) => {
             match msg {
-                TableOfContentsMessage::Toggle => model.table_of_contents_state.toggle_selected(),
+                TableOfContentsMessage::Select => {
+                    if let Some(selected) = model.table_of_contents_state.selected().first() {
+                        model.cursor.go_to_section(*selected);
+                        return Some(Message::ChangeFocus(Focus::Content));
+                    }
+                }
                 TableOfContentsMessage::Left => model.table_of_contents_state.key_left(),
                 TableOfContentsMessage::Right => model.table_of_contents_state.key_right(),
                 TableOfContentsMessage::Down => model
@@ -193,7 +198,7 @@ fn view<D: Document>(model: &mut Model<D>, f: &mut Frame) {
     f.render_widget(status_bar(&model), main_layout[2])
 }
 
-fn table_of_contents(content: Vec<TreeItem<'static, String>>) -> Tree<String> {
+fn table_of_contents(content: Vec<TreeItem<'static, usize>>) -> Tree<usize> {
     Tree::new(content)
         .expect("all item identifiers are unique")
         .highlight_style(Style::default().bg(Color::Yellow))
@@ -315,7 +320,7 @@ fn handle_event<D: Document>(model: &Model<D>) -> anyhow::Result<Option<Message>
                     },
                     Focus::TableOfContents => match key.code {
                         crossterm::event::KeyCode::Char('\n' | ' ') => Ok(Some(
-                            Message::TableOfContentsMessage(TableOfContentsMessage::Toggle),
+                            Message::TableOfContentsMessage(TableOfContentsMessage::Select),
                         )),
                         crossterm::event::KeyCode::Left => Ok(Some(
                             Message::TableOfContentsMessage(TableOfContentsMessage::Left),
@@ -358,7 +363,7 @@ fn main() -> anyhow::Result<()> {
 
     let doc = document::EpubDoc::open(&args.path).expect("unable to open the epub");
     let table_of_contents = doc.table_of_contents();
-    let table_of_contents: Vec<TreeItem<'static, String>> =
+    let table_of_contents: Vec<TreeItem<'static, usize>> =
         table_of_contents.iter().map(Into::into).collect();
     let cursor = DocumentCursor::new(doc);
     let mut model = Model {
@@ -398,13 +403,13 @@ fn split_word(word: &str) -> (String, String, String) {
     (first_half, center, second_half)
 }
 
-impl<'a> From<&TableOfContentNode> for TreeItem<'a, String> {
+impl<'a> From<&TableOfContentNode> for TreeItem<'a, usize> {
     fn from(value: &TableOfContentNode) -> Self {
         if value.children.is_empty() {
-            TreeItem::new_leaf(value.name.clone(), value.name.clone())
+            TreeItem::new_leaf(value.index, value.name.clone())
         } else {
             TreeItem::new(
-                value.name.clone(),
+                value.index,
                 value.name.clone(),
                 value.children.iter().map(Into::into).collect(),
             )
