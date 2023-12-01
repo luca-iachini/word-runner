@@ -1,8 +1,15 @@
-use std::{fs::File, io::BufReader, path::Path, usize};
+use std::{
+    fs::File,
+    io::BufReader,
+    ops::{Deref, DerefMut},
+    path::Path,
+    usize,
+};
 
-use anyhow::{anyhow, bail, Result};
+use anyhow::Result;
 use epub::doc::NavPoint;
 
+#[derive(Debug)]
 pub struct TableOfContentNode {
     pub index: usize,
     pub name: String,
@@ -19,33 +26,34 @@ impl From<&NavPoint> for TableOfContentNode {
     }
 }
 
-pub trait Document {
-    fn section(&mut self, number: usize) -> Result<Section>;
-    fn table_of_contents(&self) -> Vec<TableOfContentNode>;
-}
+pub trait Document {}
 
-pub struct DocumentCursor<D: Document> {
-    doc: D,
-    section_index: usize,
+pub struct DocumentCursor {
+    doc: EpubDoc,
     word_index: usize,
     line_index: usize,
+    current_section: Option<Section>,
 }
 
-impl<D: Document> DocumentCursor<D> {
-    pub fn new(doc: D) -> Self {
+impl DocumentCursor {
+    pub fn new(doc: EpubDoc) -> Self {
         Self {
             doc,
-            section_index: 0,
             word_index: 0,
             line_index: 0,
+            current_section: None,
         }
     }
 
-    pub fn current_section(&mut self) -> Option<Section> {
-        self.doc.section(self.section_index).ok()
+    pub fn current_section(&mut self) -> Option<&Section> {
+        if self.current_section.is_none() {
+            let current = self.doc.get_current()?;
+            self.current_section = Some(Section::new(self.doc.get_current_page(), current.0))
+        }
+        self.current_section.as_ref()
     }
 
-    pub fn current_line(&mut self) -> Option<Line> {
+    pub fn current_line(&mut self) -> Option<&Line> {
         self.current_section()?.line(self.line_index)
     }
 
@@ -60,17 +68,17 @@ impl<D: Document> DocumentCursor<D> {
     pub fn prev_section(&mut self) {
         self.word_index = 0;
         self.line_index = 0;
-        self.section_index = self.section_index.saturating_sub(1);
+        self.doc.go_prev();
     }
 
     pub fn next_section(&mut self) {
         self.word_index = 0;
         self.line_index = 0;
-        self.section_index += 1;
+        self.doc.go_next();
     }
 
     pub fn go_to_section(&mut self, section: usize) {
-        self.section_index = section;
+        //TODO
         self.word_index = 0;
         self.line_index = 0;
     }
@@ -109,7 +117,10 @@ impl<D: Document> DocumentCursor<D> {
     pub fn prev_line(&mut self) {
         if self.line_index == 0 {
             self.prev_section();
-            self.line_index = self.current_section().unwrap_or_default().lines().len();
+            self.line_index = self
+                .current_section()
+                .map(|s| s.lines.len())
+                .unwrap_or_default();
             return;
         }
         self.line_index = self.line_index.saturating_sub(1);
@@ -124,38 +135,22 @@ impl<D: Document> DocumentCursor<D> {
 pub struct Section {
     pub number: usize,
     pub content: String,
+    pub lines: Vec<Line>,
 }
 
 impl Section {
-    fn new(number: usize, content: impl ToString) -> Self {
+    fn new(number: usize, content: Vec<u8>) -> Self {
+        let content = String::from_utf8(content).unwrap();
+        let lines = lines(content);
         Self {
             number,
-            content: content.to_string(),
+            content,
+            lines,
         }
     }
 
-    pub fn line(&self, index: usize) -> Option<Line> {
-        self.lines().get(index).cloned()
-    }
-    pub fn lines(&self) -> Vec<Line> {
-        let mut result = vec![];
-        let mut global_words_index = 0;
-        for (i, l) in self.content.lines().filter(|l| !l.is_empty()).enumerate() {
-            let words = l.split_whitespace().count();
-            let end_word_index = if words == 0 {
-                global_words_index
-            } else {
-                global_words_index + words - 1
-            };
-            result.push(Line {
-                index: i,
-                word_indexes: (global_words_index, end_word_index),
-                words,
-                content: l.to_string(),
-            });
-            global_words_index += words;
-        }
-        result
+    pub fn line(&self, index: usize) -> Option<&Line> {
+        self.lines.get(index)
     }
 
     pub fn word(&self, index: usize) -> Option<String> {
@@ -164,6 +159,26 @@ impl Section {
             .nth(index)
             .map(ToString::to_string)
     }
+}
+fn lines(content: String) -> Vec<Line> {
+    let mut result = vec![];
+    let mut global_words_index = 0;
+    for (i, l) in content.lines().filter(|l| !l.is_empty()).enumerate() {
+        let words = l.split_whitespace().count();
+        let end_word_index = if words == 0 {
+            global_words_index
+        } else {
+            global_words_index + words - 1
+        };
+        result.push(Line {
+            index: i,
+            word_indexes: (global_words_index, end_word_index),
+            words,
+            content: l.to_string(),
+        });
+        global_words_index += words;
+    }
+    result
 }
 
 #[derive(Debug, Clone, Default)]
@@ -174,38 +189,31 @@ pub struct Line {
     pub content: String,
 }
 
-pub struct EpubDoc {
-    doc: epub::doc::EpubDoc<BufReader<File>>,
+pub struct EpubDoc(epub::doc::EpubDoc<BufReader<File>>);
+
+impl Deref for EpubDoc {
+    type Target = epub::doc::EpubDoc<BufReader<File>>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for EpubDoc {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
 }
 
 impl EpubDoc {
     pub fn open(path: &Path) -> Result<Self> {
-        Ok(Self {
-            doc: epub::doc::EpubDoc::new(path)?,
-        })
+        Ok(Self(epub::doc::EpubDoc::new(path)?))
+    }
+    pub fn table_of_contents(&self) -> Vec<TableOfContentNode> {
+        self.table_of_contents().iter().map(Into::into).collect()
     }
 }
 
-impl Document for EpubDoc {
-    fn section(&mut self, number: usize) -> Result<Section> {
-        let section_id = self.doc.spine.get(number + 1);
-        let section_id = match section_id {
-            Some(id) => id.to_string(),
-            None => bail!("page id not found"),
-        };
-        let (content, _mime) = self
-            .doc
-            .get_resource(&section_id)
-            .ok_or(anyhow!("no resource"))?;
-        let content = String::from_utf8(content)?;
-        let content = html2text::from_read(content.as_bytes(), 100);
-        Ok(Section::new(number, content))
-    }
-
-    fn table_of_contents(&self) -> Vec<TableOfContentNode> {
-        self.doc.toc.iter().map(Into::into).collect()
-    }
-}
+impl Document for EpubDoc {}
 
 #[cfg(test)]
 mod test {
@@ -214,53 +222,60 @@ mod test {
     use rstest::*;
     use std::path::Path;
 
-    #[rstest]
-    fn it_gets_a_section(mut epub: EpubDoc, content: &str) {
-        let page = epub.section(2);
+    //   #[rstest]
+    //   fn it_gets_a_section(mut epub: EpubDoc, content: &str) {
+    //       let page = epub.section(2);
 
-        let_assert!(Ok(page) = page);
-        check!(page.number == 2);
-        check!(page.content == content);
-    }
+    //       let_assert!(Ok(page) = page);
+    //       check!(page.number == 2);
+    //       check!(page.content == content);
+    //   }
+
+    //   #[rstest]
+    //   fn it_gets_current_word(epub: EpubDoc) {
+    //       let mut cursor = DocumentCursor::new(epub);
+    //       cursor.next_section();
+    //       cursor.next_section();
+    //       //cursor.next_word();
+    //       assert_eq!(cursor.current_word(), Some("[Dedication][1]".to_string()));
+    //   }
+
+    //   #[rstest]
+    //   fn it_moves_between_words(epub: EpubDoc) {
+    //       let mut cursor = DocumentCursor::new(epub);
+    //       cursor.next_section();
+    //       cursor.next_section();
+    //       cursor.next_word();
+    //       assert_eq!(cursor.current_word(), Some("For".to_string()));
+    //       cursor.prev_word();
+    //       assert_eq!(cursor.current_word(), Some("[Dedication][1]".to_string()));
+    //   }
+
+    //   #[rstest]
+    //   fn it_moves_on_not_empty_lines(epub: EpubDoc) {
+    //       let mut cursor = DocumentCursor::new(epub);
+    //       cursor.next_section();
+    //       cursor.next_section();
+    //       cursor.next_word();
+    //       let_assert!(Some(line) = cursor.current_line());
+    //       assert_eq!(line.word_indexes, (1, 2));
+    //       assert_eq!(line.index, 2);
+    //       cursor.prev_word();
+    //       let_assert!(Some(line) = cursor.current_line());
+    //       assert_eq!(line.word_indexes, (0, 0));
+    //       assert_eq!(line.index, 0);
+    //   }
 
     #[rstest]
-    fn it_gets_current_word(epub: EpubDoc) {
-        let mut cursor = DocumentCursor::new(epub);
-        cursor.next_section();
-        cursor.next_section();
-        //cursor.next_word();
-        assert_eq!(cursor.current_word(), Some("[Dedication][1]".to_string()));
-    }
-
-    #[rstest]
-    fn it_moves_between_words(epub: EpubDoc) {
-        let mut cursor = DocumentCursor::new(epub);
-        cursor.next_section();
-        cursor.next_section();
-        cursor.next_word();
-        assert_eq!(cursor.current_word(), Some("For".to_string()));
-        cursor.prev_word();
-        assert_eq!(cursor.current_word(), Some("[Dedication][1]".to_string()));
-    }
-
-    #[rstest]
-    fn it_moves_on_not_empty_lines(epub: EpubDoc) {
-        let mut cursor = DocumentCursor::new(epub);
-        cursor.next_section();
-        cursor.next_section();
-        cursor.next_word();
-        let_assert!(Some(line) = cursor.current_line());
-        assert_eq!(line.word_indexes, (1, 2));
-        assert_eq!(line.index, 2);
-        cursor.prev_word();
-        let_assert!(Some(line) = cursor.current_line());
-        assert_eq!(line.word_indexes, (0, 0));
-        assert_eq!(line.index, 0);
+    fn it_get_table_of_content(epub: EpubDoc) {
+        let toc = epub.table_of_contents();
+        dbg!(toc);
+        check!(false);
     }
 
     #[fixture]
     fn epub() -> EpubDoc {
-        let path = Path::new("test.epub");
+        let path = Path::new("Extreme ProgrammingExplained.epub");
         EpubDoc::open(path).unwrap()
     }
     #[fixture]

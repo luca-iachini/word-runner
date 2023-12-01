@@ -12,7 +12,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction},
     style::{Color, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph, Scrollbar, ScrollbarOrientation},
+    widgets::{Block, Borders, Paragraph},
     Frame, Terminal,
 };
 use strum;
@@ -43,9 +43,9 @@ enum Focus {
     TableOfContents,
 }
 
-struct Model<D: Document> {
+struct Model {
     should_quit: bool,
-    cursor: DocumentCursor<D>,
+    cursor: DocumentCursor,
     table_of_contents: Vec<TreeItem<'static, usize>>,
     table_of_contents_state: TreeState<usize>,
     last_word_change: SystemTime,
@@ -79,7 +79,7 @@ enum TableOfContentsMessage {
     Up,
 }
 
-fn update<D: Document>(model: &mut Model<D>, msg: Message) -> Option<Message> {
+fn update(model: &mut Model, msg: Message) -> Option<Message> {
     match msg {
         Message::Quit => {
             model.should_quit = true;
@@ -158,13 +158,8 @@ fn update<D: Document>(model: &mut Model<D>, msg: Message) -> Option<Message> {
     }
 }
 
-fn view<D: Document>(model: &mut Model<D>, f: &mut Frame) {
+fn view(model: &mut Model, f: &mut Frame) {
     let word = model.cursor.current_word().unwrap_or_default();
-    let page = model
-        .cursor
-        .current_section()
-        .map(|p| p.content)
-        .unwrap_or_default();
     let main_layout = Layout::default()
         .direction(Direction::Vertical)
         .margin(1)
@@ -187,14 +182,7 @@ fn view<D: Document>(model: &mut Model<D>, f: &mut Frame) {
         content_layout[0],
         &mut model.table_of_contents_state,
     );
-    f.render_widget(
-        content(
-            &page,
-            model.cursor.word_index(),
-            model.cursor.current_line(),
-        ),
-        content_layout[1],
-    );
+    f.render_widget(content(&model.cursor), content_layout[1]);
     f.render_widget(status_bar(&model), main_layout[2])
 }
 
@@ -209,11 +197,15 @@ fn table_of_contents(content: Vec<TreeItem<'static, usize>>) -> Tree<usize> {
         )
 }
 
-fn content(section: &str, current_word: usize, current_line: Option<document::Line>) -> Paragraph {
+fn content(cursor: &document::DocumentCursor) -> Paragraph {
     let mut lines: Vec<Line> = vec![];
     let mut index = 0;
-    if let Some(current_line) = current_line {
-        for l in section.lines() {
+    if let Some(current_line) = cursor.current_line() {
+        for l in cursor
+            .current_section()
+            .map(|s| s.lines)
+            .unwrap_or_default()
+        {
             let split: Vec<_> = l.trim().split_whitespace().collect();
             let line = if !l.is_empty() && index == current_line.index {
                 let line: Line = if current_word - current_line.word_indexes.0 > 0 {
@@ -281,7 +273,7 @@ fn current_word(word: impl ToString) -> Paragraph<'static> {
         .style(Style::default().fg(Color::White).bg(Color::Black))
 }
 
-fn status_bar<D: Document>(model: &Model<D>) -> Paragraph {
+fn status_bar(model: &Model) -> Paragraph {
     let status: Line = vec![
         Span::raw("Status: "),
         Span::raw(model.status.to_string()),
@@ -294,7 +286,7 @@ fn status_bar<D: Document>(model: &Model<D>) -> Paragraph {
     Paragraph::new(status).block(Block::default().title("Status").borders(Borders::ALL))
 }
 
-fn handle_event<D: Document>(model: &Model<D>) -> anyhow::Result<Option<Message>> {
+fn handle_event(model: &Model) -> anyhow::Result<Option<Message>> {
     if crossterm::event::poll(std::time::Duration::from_millis(250))? {
         if let crossterm::event::Event::Key(key) = crossterm::event::read()? {
             match key.code {
