@@ -46,7 +46,7 @@ enum Focus {
 struct Model<D: Document> {
     should_quit: bool,
     cursor: DocumentCursor<D>,
-    table_of_contents: Vec<TableOfContentNode>,
+    table_of_contents: Vec<TreeItem<'static, String>>,
     table_of_contents_state: TreeState<String>,
     last_word_change: SystemTime,
     speed: Duration,
@@ -141,8 +141,12 @@ fn update<D: Document>(model: &mut Model<D>, msg: Message) -> Option<Message> {
                 TableOfContentsMessage::Toggle => model.table_of_contents_state.toggle_selected(),
                 TableOfContentsMessage::Left => model.table_of_contents_state.key_left(),
                 TableOfContentsMessage::Right => model.table_of_contents_state.key_right(),
-                TableOfContentsMessage::Down => model.table_of_contents_state.key_down(&[]),
-                TableOfContentsMessage::Up => model.table_of_contents_state.key_up(&[]),
+                TableOfContentsMessage::Down => model
+                    .table_of_contents_state
+                    .key_down(&model.table_of_contents),
+                TableOfContentsMessage::Up => model
+                    .table_of_contents_state
+                    .key_up(&model.table_of_contents),
             };
             None
         }
@@ -174,7 +178,7 @@ fn view<D: Document>(model: &mut Model<D>, f: &mut Frame) {
         .split(main_layout[1]);
     f.render_widget(current_word(&word), main_layout[0]);
     f.render_stateful_widget(
-        table_of_contents(&model.table_of_contents),
+        table_of_contents(model.table_of_contents.clone()),
         content_layout[0],
         &mut model.table_of_contents_state,
     );
@@ -189,9 +193,8 @@ fn view<D: Document>(model: &mut Model<D>, f: &mut Frame) {
     f.render_widget(status_bar(&model), main_layout[2])
 }
 
-fn table_of_contents(content: &[TableOfContentNode]) -> Tree<String> {
-    let items = content.into_iter().map(Into::into).collect();
-    Tree::new(items)
+fn table_of_contents(content: Vec<TreeItem<'static, String>>) -> Tree<String> {
+    Tree::new(content)
         .expect("all item identifiers are unique")
         .highlight_style(Style::default().bg(Color::Yellow))
         .block(
@@ -355,6 +358,8 @@ fn main() -> anyhow::Result<()> {
 
     let doc = document::EpubDoc::open(&args.path).expect("unable to open the epub");
     let table_of_contents = doc.table_of_contents();
+    let table_of_contents: Vec<TreeItem<'static, String>> =
+        table_of_contents.iter().map(Into::into).collect();
     let cursor = DocumentCursor::new(doc);
     let mut model = Model {
         should_quit: false,
