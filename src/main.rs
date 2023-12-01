@@ -319,7 +319,7 @@ fn handle_event<D: Document>(model: &Model<D>) -> anyhow::Result<Option<Message>
                         _ => Ok(None),
                     },
                     Focus::TableOfContents => match key.code {
-                        crossterm::event::KeyCode::Char('\n' | ' ') => Ok(Some(
+                        crossterm::event::KeyCode::Enter => Ok(Some(
                             Message::TableOfContentsMessage(TableOfContentsMessage::Select),
                         )),
                         crossterm::event::KeyCode::Left => Ok(Some(
