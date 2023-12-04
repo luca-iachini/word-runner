@@ -28,25 +28,31 @@ impl From<&NavPoint> for TableOfContentNode {
 
 pub struct DocumentCursor {
     doc: EpubDoc,
-    current_section: Option<SectionCursor>,
+    current_section: SectionCursor,
 }
 
 impl DocumentCursor {
-    pub fn new(doc: EpubDoc) -> Self {
+    pub fn new(mut doc: EpubDoc) -> Self {
+        doc.go_next();
+        let current_section = doc
+            .get_current()
+            .map(|c| SectionCursor::new(doc.get_current_page(), c.0))
+            .unwrap_or_default();
         Self {
             doc,
-            current_section: None,
+            current_section,
         }
     }
 
-    pub fn current_section(&mut self) -> Option<&mut SectionCursor> {
-        if self.current_section.is_none() {
+    pub fn current_section(&mut self) -> &mut SectionCursor {
+        if self.current_section.number != self.doc.get_current_page() {
             self.current_section = self
                 .doc
                 .get_current()
-                .map(|c| SectionCursor::new(self.doc.get_current_page(), c.0));
+                .map(|c| SectionCursor::new(self.doc.get_current_page(), c.0))
+                .unwrap_or_default();
         }
-        self.current_section.as_mut()
+        &mut self.current_section
     }
 
     pub fn prev_section(&mut self) -> bool {
@@ -214,14 +220,18 @@ mod test {
     use rstest::*;
     use std::path::Path;
 
-    //   #[rstest]
-    //   fn it_gets_a_section(mut epub: EpubDoc, content: &str) {
-    //       let page = epub.section(2);
+    #[rstest]
+    fn it_gets_a_section(epub: EpubDoc) {
+        let mut cursor = DocumentCursor::new(epub);
 
-    //       let_assert!(Ok(page) = page);
-    //       check!(page.number == 2);
-    //       check!(page.content == content);
-    //   }
+        let_assert!(section = cursor.current_section());
+        check!(section.number == 1);
+
+        cursor.next_section();
+        check!(cursor.doc.spine.len() > 1);
+        let_assert!(section = cursor.current_section());
+        check!(section.number == 2);
+    }
 
     //   #[rstest]
     //   fn it_gets_current_word(epub: EpubDoc) {

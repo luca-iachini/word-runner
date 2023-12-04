@@ -86,7 +86,7 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
             None
         }
         Message::PrevWord => {
-            if !model.cursor.current_section()?.prev_word() {
+            if !model.cursor.current_section().prev_word() {
                 Some(Message::PrevSection)
             } else {
                 None
@@ -94,21 +94,21 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
         }
         Message::NextWord => {
             model.last_word_change = SystemTime::now();
-            if !model.cursor.current_section()?.next_word() {
+            if !model.cursor.current_section().next_word() {
                 Some(Message::NextSection)
             } else {
                 None
             }
         }
         Message::PrevLine => {
-            if !model.cursor.current_section()?.prev_line() {
+            if !model.cursor.current_section().prev_line() {
                 Some(Message::PrevSection)
             } else {
                 None
             }
         }
         Message::NextLine => {
-            if !model.cursor.current_section()?.next_line() {
+            if !model.cursor.current_section().next_line() {
                 Some(Message::NextSection)
             } else {
                 None
@@ -170,7 +170,6 @@ fn view(model: &mut Model, f: &mut Frame) {
     let word = model
         .cursor
         .current_section()
-        .expect("ciao")
         .current_word()
         .unwrap_or_default();
     let main_layout = Layout::default()
@@ -213,45 +212,43 @@ fn table_of_contents(content: Vec<TreeItem<'static, usize>>) -> Tree<usize> {
 fn content(cursor: &mut document::DocumentCursor) -> Paragraph {
     let mut lines: Vec<Line> = vec![];
     let mut index = 0;
-    if let Some(current_section) = cursor.current_section() {
-        let current_line = current_section.current_line();
-        let text_lines = current_section.content.lines();
-        if let Some(current_line) = current_line {
-            for l in text_lines {
-                let split: Vec<_> = l.trim().split_whitespace().collect();
-                let line = if !l.is_empty() && index == current_line.index {
-                    let line: Line =
-                        if current_section.word_index() - current_line.word_indexes.0 > 0 {
-                            let pos = current_section.word_index() - current_line.word_indexes.0;
-                            vec![
-                                Span::raw(split[..pos].join(" ")),
-                                Span::raw(" "),
-                                word_cursor(split[pos]),
-                                Span::raw(" "),
-                                Span::raw(split[pos + 1..].join(" ")),
-                            ]
-                            .into()
-                        } else {
-                            vec![
-                                word_cursor(split[0]),
-                                Span::raw(" "),
-                                Span::raw(split[1..].join(" ")),
-                            ]
-                            .into()
-                        };
-
-                    line
+    let current_section = cursor.current_section();
+    let current_line = current_section.current_line();
+    let text_lines = current_section.content.lines();
+    if let Some(current_line) = current_line {
+        for l in text_lines {
+            let split: Vec<_> = l.trim().split_whitespace().collect();
+            let line = if !l.is_empty() && index == current_line.index {
+                let line: Line = if current_section.word_index() - current_line.word_indexes.0 > 0 {
+                    let pos = current_section.word_index() - current_line.word_indexes.0;
+                    vec![
+                        Span::raw(split[..pos].join(" ")),
+                        Span::raw(" "),
+                        word_cursor(split[pos]),
+                        Span::raw(" "),
+                        Span::raw(split[pos + 1..].join(" ")),
+                    ]
+                    .into()
                 } else {
-                    Line::raw(l)
+                    vec![
+                        word_cursor(split[0]),
+                        Span::raw(" "),
+                        Span::raw(split[1..].join(" ")),
+                    ]
+                    .into()
                 };
-                lines.push(line);
-                if !l.is_empty() {
-                    index += 1;
-                }
+
+                line
+            } else {
+                Line::raw(l)
+            };
+            lines.push(line);
+            if !l.is_empty() {
+                index += 1;
             }
-            if current_line.index > 3 {
-                lines = lines.into_iter().skip(current_line.index - 3).collect();
-            }
+        }
+        if current_line.index > 3 {
+            lines = lines.into_iter().skip(current_line.index - 3).collect();
         }
     }
 
