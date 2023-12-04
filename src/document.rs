@@ -28,123 +28,69 @@ impl From<&NavPoint> for TableOfContentNode {
 
 pub struct DocumentCursor {
     doc: EpubDoc,
-    word_index: usize,
-    line_index: usize,
-    current_section: Option<Section>,
+    current_section: Option<SectionCursor>,
 }
 
 impl DocumentCursor {
     pub fn new(doc: EpubDoc) -> Self {
         Self {
             doc,
-            word_index: 0,
-            line_index: 0,
             current_section: None,
         }
     }
 
-    pub fn current_section<'a>(&'a mut self) -> Option<&'a Section> {
+    pub fn current_section(&mut self) -> Option<&mut SectionCursor> {
         if self.current_section.is_none() {
-            let current = self.doc.get_current()?;
-            self.current_section = Some(Section::new(self.doc.get_current_page(), current.0))
+            self.current_section = self
+                .doc
+                .get_current()
+                .map(|c| SectionCursor::new(self.doc.get_current_page(), c.0));
         }
-        self.current_section.as_ref()
+        self.current_section.as_mut()
     }
 
-    pub fn current_line<'a>(&'a mut self) -> Option<&'a Line> {
-        self.current_section()?.line(self.line_index)
+    pub fn prev_section(&mut self) -> bool {
+        self.doc.go_prev()
     }
 
-    pub fn current_word(&mut self) -> Option<String> {
-        self.current_section()?.word(self.word_index)
+    pub fn next_section(&mut self) -> bool {
+        self.doc.go_next()
+    }
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct SectionCursor {
+    pub number: usize,
+    pub content: String,
+    pub lines: Vec<Line>,
+    word_index: usize,
+    line_index: usize,
+}
+
+impl SectionCursor {
+    fn new(number: usize, content: Vec<u8>) -> Self {
+        let content = String::from_utf8(content).unwrap();
+        let content = html2text::from_read(content.as_bytes(), 100);
+        let lines = lines(content.clone());
+        Self {
+            number,
+            content,
+            lines,
+            word_index: 0,
+            line_index: 0,
+        }
     }
 
     pub fn word_index(&self) -> usize {
         self.word_index
     }
 
-    pub fn prev_section(&mut self) {
-        self.word_index = 0;
-        self.line_index = 0;
-        self.doc.go_prev();
+    pub fn current_line(&self) -> Option<&Line> {
+        self.line(self.line_index)
     }
 
-    pub fn next_section(&mut self) {
-        self.word_index = 0;
-        self.line_index = 0;
-        self.doc.go_next();
-    }
-
-    pub fn go_to_section(&mut self, _section: usize) {
-        //TODO
-        self.word_index = 0;
-        self.line_index = 0;
-    }
-
-    pub fn prev_word(&mut self) {
-        self.word_index = self.word_index.saturating_sub(1);
-        let start_of_line = self.current_line().map(|l| l.word_indexes.0).unwrap();
-        if self.word_index < start_of_line {
-            self.prev_line();
-        }
-    }
-
-    pub fn next_word(&mut self) {
-        if let Some(end_of_line) = self.current_line().map(|l| l.word_indexes.1) {
-            self.word_index += 1;
-            if self.word_index > end_of_line {
-                self.next_line();
-            }
-        } else {
-            self.next_line();
-        }
-    }
-
-    pub fn next_line(&mut self) {
-        self.line_index += 1;
-
-        if self.current_line().is_none() {
-            self.next_section()
-        }
-        self.word_index = self
-            .current_line()
-            .map(|l| l.word_indexes.0)
-            .unwrap_or_default();
-    }
-
-    pub fn prev_line(&mut self) {
-        if self.line_index == 0 {
-            self.prev_section();
-            self.line_index = self
-                .current_section()
-                .map(|s| s.lines.len())
-                .unwrap_or_default();
-            return;
-        }
-        self.line_index = self.line_index.saturating_sub(1);
-        self.word_index = self
-            .current_line()
-            .map(|l| l.word_indexes.0)
-            .unwrap_or_default();
-    }
-}
-
-#[derive(Debug, Default, Clone)]
-pub struct Section {
-    pub number: usize,
-    pub content: String,
-    pub lines: Vec<Line>,
-}
-
-impl Section {
-    fn new(number: usize, content: Vec<u8>) -> Self {
-        let content = String::from_utf8(content).unwrap();
-        let lines = lines(content.clone());
-        Self {
-            number,
-            content,
-            lines,
-        }
+    pub fn current_word(&self) -> Option<String> {
+        self.word(self.word_index)
     }
 
     pub fn line(&self, index: usize) -> Option<&Line> {
@@ -156,6 +102,56 @@ impl Section {
             .split_whitespace()
             .nth(index)
             .map(ToString::to_string)
+    }
+
+    pub fn prev_word(&mut self) -> bool {
+        if self.word_index == 0 {
+            return false;
+        }
+        self.word_index -= 1;
+        let start_of_line = self.current_line().map(|l| l.word_indexes.0).unwrap();
+        if self.word_index < start_of_line {
+            return self.prev_line();
+        }
+        true
+    }
+
+    pub fn next_word(&mut self) -> bool {
+        if let Some(end_of_line) = self.current_line().map(|l| l.word_indexes.1) {
+            self.word_index += 1;
+            if self.word_index > end_of_line {
+                return self.next_line();
+            }
+            true
+        } else {
+            self.next_line()
+        }
+    }
+
+    pub fn next_line(&mut self) -> bool {
+        if self.line_index + 1 > self.lines.len() {
+            return false;
+        }
+
+        self.line_index += 1;
+
+        self.word_index = self
+            .current_line()
+            .map(|l| l.word_indexes.0)
+            .unwrap_or_default();
+        true
+    }
+
+    pub fn prev_line(&mut self) -> bool {
+        if self.line_index == 0 {
+            return false;
+        }
+        self.line_index = self.line_index.saturating_sub(1);
+        self.word_index = self
+            .current_line()
+            .map(|l| l.word_indexes.0)
+            .unwrap_or_default();
+        true
     }
 }
 fn lines(content: String) -> Vec<Line> {
