@@ -36,21 +36,26 @@ impl DocumentCursor {
         doc.go_next();
         let current_section = doc
             .get_current()
-            .map(|c| SectionCursor::new(doc.get_current_page(), c.0))
+            .map(|c| SectionCursor::new(doc.get_current_page(), c.0, 80))
             .unwrap_or_default();
         Self {
             doc,
             current_section,
         }
     }
-
     pub fn current_section(&mut self) -> &mut SectionCursor {
+        &mut self.current_section
+    }
+
+    pub fn current_section_or_resize(&mut self, size: usize) -> &mut SectionCursor {
         if self.current_section.number != self.doc.get_current_page() {
             self.current_section = self
                 .doc
                 .get_current()
-                .map(|c| SectionCursor::new(self.doc.get_current_page(), c.0))
+                .map(|c| SectionCursor::new(self.doc.get_current_page(), c.0, size))
                 .unwrap_or_default();
+        } else if self.current_section.size != size {
+            self.current_section = SectionCursor::from_resize(&self.current_section, size);
         }
         &mut self.current_section
     }
@@ -68,23 +73,42 @@ impl DocumentCursor {
 pub struct SectionCursor {
     pub number: usize,
     pub content: String,
+    pub raw_content: Vec<u8>,
     pub lines: Vec<Line>,
     word_index: usize,
     line_index: usize,
+    size: usize,
 }
 
 impl SectionCursor {
-    fn new(number: usize, content: Vec<u8>) -> Self {
-        let content = String::from_utf8(content).unwrap();
-        let content = html2text::from_read(content.as_bytes(), 100);
+    fn new(number: usize, raw_content: Vec<u8>, size: usize) -> Self {
+        let content = String::from_utf8(raw_content.clone()).unwrap();
+        let content = html2text::from_read(content.as_bytes(), size);
         let lines = lines(content.clone());
         Self {
             number,
             content,
+            raw_content,
             lines,
             word_index: 0,
             line_index: 0,
+            size,
         }
+    }
+
+    fn from_resize(other: &Self, size: usize) -> Self {
+        let mut result = SectionCursor::new(other.number, other.raw_content.clone(), size);
+        result.line_index = result
+            .lines
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| {
+                e.word_indexes.0 <= other.word_index && other.word_index <= e.word_indexes.1
+            })
+            .map(|(i, _)| i)
+            .next()
+            .unwrap_or_default();
+        result
     }
 
     pub fn word_index(&self) -> usize {
@@ -160,6 +184,7 @@ impl SectionCursor {
         true
     }
 }
+
 fn lines(content: String) -> Vec<Line> {
     let mut result = vec![];
     let mut global_words_index = 0;
@@ -232,41 +257,6 @@ mod test {
         let_assert!(section = cursor.current_section());
         check!(section.number == 2);
     }
-
-    //   #[rstest]
-    //   fn it_gets_current_word(epub: EpubDoc) {
-    //       let mut cursor = DocumentCursor::new(epub);
-    //       cursor.next_section();
-    //       cursor.next_section();
-    //       //cursor.next_word();
-    //       assert_eq!(cursor.current_word(), Some("[Dedication][1]".to_string()));
-    //   }
-
-    //   #[rstest]
-    //   fn it_moves_between_words(epub: EpubDoc) {
-    //       let mut cursor = DocumentCursor::new(epub);
-    //       cursor.next_section();
-    //       cursor.next_section();
-    //       cursor.next_word();
-    //       assert_eq!(cursor.current_word(), Some("For".to_string()));
-    //       cursor.prev_word();
-    //       assert_eq!(cursor.current_word(), Some("[Dedication][1]".to_string()));
-    //   }
-
-    //   #[rstest]
-    //   fn it_moves_on_not_empty_lines(epub: EpubDoc) {
-    //       let mut cursor = DocumentCursor::new(epub);
-    //       cursor.next_section();
-    //       cursor.next_section();
-    //       cursor.next_word();
-    //       let_assert!(Some(line) = cursor.current_line());
-    //       assert_eq!(line.word_indexes, (1, 2));
-    //       assert_eq!(line.index, 2);
-    //       cursor.prev_word();
-    //       let_assert!(Some(line) = cursor.current_line());
-    //       assert_eq!(line.word_indexes, (0, 0));
-    //       assert_eq!(line.index, 0);
-    //   }
 
     #[rstest]
     fn it_get_table_of_content(epub: EpubDoc) {

@@ -1,6 +1,7 @@
 use std::{
     path::PathBuf,
     time::{Duration, SystemTime},
+    u16,
 };
 
 use clap::{Parser, ValueHint};
@@ -194,7 +195,10 @@ fn view(model: &mut Model, f: &mut Frame) {
         content_layout[0],
         &mut model.table_of_contents_state,
     );
-    f.render_widget(content(&mut model.cursor), content_layout[1]);
+    f.render_widget(
+        content(&mut model.cursor, content_layout[1].width),
+        content_layout[1],
+    );
     f.render_widget(status_bar(&model), main_layout[2])
 }
 
@@ -209,10 +213,10 @@ fn table_of_contents(content: Vec<TreeItem<'static, usize>>) -> Tree<usize> {
         )
 }
 
-fn content(cursor: &mut document::DocumentCursor) -> Paragraph {
+fn content(cursor: &mut document::DocumentCursor, width: u16) -> Paragraph {
     let mut lines: Vec<Line> = vec![];
     let mut index = 0;
-    let current_section = cursor.current_section();
+    let current_section = cursor.current_section_or_resize(width as usize);
     let current_line = current_section.current_line();
     let text_lines = current_section.content.lines();
     if let Some(current_line) = current_line {
