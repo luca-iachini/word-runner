@@ -223,8 +223,9 @@ fn content(cursor: &mut document::DocumentCursor, width: u16) -> Paragraph {
         for l in text_lines {
             let split: Vec<_> = l.trim().split_whitespace().collect();
             let line = if !l.is_empty() && index == current_line.index {
-                let line: Line = if current_section.word_index() - current_line.word_indexes.0 > 0 {
-                    let pos = current_section.word_index() - current_line.word_indexes.0;
+                let line: Line = if current_section.word_index() != current_line.first_word_index()
+                {
+                    let pos = current_section.word_index() - current_line.first_word_index();
                     vec![
                         Span::raw(split[..pos].join(" ")),
                         Span::raw(" "),

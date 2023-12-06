@@ -127,7 +127,7 @@ impl SectionCursor {
             .content
             .split_whitespace()
             .nth(self.word_index)
-            .map(|s| s.to_string())
+            .map(String::to_string)
     }
 
     pub fn line(&self, index: usize) -> Option<&Line> {
@@ -199,7 +199,7 @@ fn lines(content: String) -> Vec<Line> {
             .filter(|(_, w)| w.chars().any(char::is_alphabetic))
             .map(|(i, _)| global_words_index + i)
             .collect();
-        global_words_index = valid_words.last().copied().unwrap_or_default();
+        global_words_index += valid_words.len();
         result.push(Line {
             index: i,
             word_indexes: valid_words,
