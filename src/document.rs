@@ -133,11 +133,7 @@ impl SectionCursor {
     }
 
     pub fn current_word(&self) -> Option<String> {
-        self.current_line()?
-            .content
-            .split_whitespace()
-            .nth(self.word_index)
-            .map(|s| s.to_string())
+        self.current_line()?.current_word(self.word_index)
     }
 
     pub fn line(&self, index: usize) -> Option<&Line> {
@@ -233,27 +229,32 @@ impl Line {
     pub fn last_word_index(&self) -> usize {
         self.word_indexes.last().copied().unwrap_or_default()
     }
-
-    fn prev_word(&self, word_index: usize) -> Option<usize> {
-        let index = self
-            .word_indexes
+    pub fn current_word(&self, global_word_index: usize) -> Option<String> {
+        let index = self.word_position(global_word_index)?;
+        self.content
+            .split_whitespace()
+            .nth(index)
+            .map(|s| s.to_string())
+    }
+    pub fn word_position(&self, global_word_index: usize) -> Option<usize> {
+        self.word_indexes
             .iter()
-            .find_position(|w| **w == word_index)?
-            .0;
-        if index > 0 {
-            self.word_indexes.get(index - 1).copied()
+            .find_position(|w| **w == global_word_index)
+            .map(|(i, _)| i)
+    }
+
+    fn prev_word(&self, global_word_index: usize) -> Option<usize> {
+        let line_index = self.word_position(global_word_index)?;
+        if line_index > 0 {
+            self.word_indexes.get(line_index - 1).copied()
         } else {
             None
         }
     }
-    fn next_word(&self, word_index: usize) -> Option<usize> {
-        let index = self
-            .word_indexes
-            .iter()
-            .find_position(|w| **w == word_index)?
-            .0;
-        if index < self.word_indexes.len() - 1 {
-            self.word_indexes.get(index + 1).copied()
+    fn next_word(&self, global_word_index: usize) -> Option<usize> {
+        let line_index = self.word_position(global_word_index)?;
+        if line_index < self.word_indexes.len() - 1 {
+            self.word_indexes.get(line_index + 1).copied()
         } else {
             None
         }
