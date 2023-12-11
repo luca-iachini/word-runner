@@ -40,12 +40,6 @@ enum Status {
     Paused,
 }
 
-#[derive(Debug, PartialEq, strum::Display)]
-enum Focus {
-    Content,
-    TableOfContents,
-}
-
 struct Model {
     should_quit: bool,
     cursor: DocumentCursor,
@@ -54,7 +48,6 @@ struct Model {
     last_word_change: Instant,
     speed: Duration,
     status: Status,
-    focus: Focus,
 }
 
 #[derive(PartialEq)]
@@ -69,7 +62,6 @@ enum Message {
     IncreaseSpeed,
     DecreaseSpeed,
     ToggleStatus,
-    ChangeFocus(Focus),
     TableOfContentsMessage(TableOfContentsMessage),
 }
 
@@ -150,16 +142,12 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
                 Some(Message::NextWord)
             }
         },
-        Message::ChangeFocus(focus) => {
-            model.focus = focus;
-            None
-        }
         Message::TableOfContentsMessage(msg) => {
+            model.status = Status::Paused;
             match msg {
                 TableOfContentsMessage::Select => {
                     if let Some(selected) = model.table_of_contents_state.selected().first() {
                         model.cursor.goto_section(*selected);
-                        return Some(Message::ChangeFocus(Focus::Content));
                     }
                 }
                 TableOfContentsMessage::Left => model.table_of_contents_state.key_left(),
@@ -304,8 +292,6 @@ fn status_bar(model: &Model) -> Paragraph {
         Span::raw(model.status.to_string()),
         Span::raw(" Speed: "),
         Span::raw(model.speed.as_millis().to_string()),
-        Span::raw(" Focus: "),
-        Span::raw(model.focus.to_string()),
         Span::raw(" Position: "),
         Span::raw(format!(
             "{}/{}",
@@ -323,52 +309,37 @@ fn handle_event(model: &Model) -> anyhow::Result<Option<Message>> {
         if let crossterm::event::Event::Key(key) = crossterm::event::read()? {
             match key.code {
                 crossterm::event::KeyCode::Char('q') => Ok(Some(Message::Quit)),
-                crossterm::event::KeyCode::Char('t') => {
-                    Ok(Some(Message::ChangeFocus(Focus::TableOfContents)))
-                }
-                crossterm::event::KeyCode::Char('c') => {
-                    Ok(Some(Message::ChangeFocus(Focus::Content)))
-                }
-                _ => match model.focus {
-                    Focus::Content => match key.code {
-                        crossterm::event::KeyCode::Right => Ok(Some(Message::NextWord)),
-                        crossterm::event::KeyCode::Left => Ok(Some(Message::PrevWord)),
-                        crossterm::event::KeyCode::Up => Ok(Some(Message::PrevLine)),
-                        crossterm::event::KeyCode::Down => Ok(Some(Message::NextLine)),
-                        crossterm::event::KeyCode::PageUp => Ok(Some(Message::PrevSection)),
-                        crossterm::event::KeyCode::PageDown => Ok(Some(Message::NextSection)),
-                        crossterm::event::KeyCode::Char('+') => Ok(Some(Message::IncreaseSpeed)),
-                        crossterm::event::KeyCode::Char('-') => Ok(Some(Message::DecreaseSpeed)),
-                        crossterm::event::KeyCode::Char(' ') => Ok(Some(Message::ToggleStatus)),
-                        _ => Ok(None),
-                    },
-                    Focus::TableOfContents => match key.code {
-                        crossterm::event::KeyCode::Enter => Ok(Some(
-                            Message::TableOfContentsMessage(TableOfContentsMessage::Select),
-                        )),
-                        crossterm::event::KeyCode::Left => Ok(Some(
-                            Message::TableOfContentsMessage(TableOfContentsMessage::Left),
-                        )),
-                        crossterm::event::KeyCode::Right => Ok(Some(
-                            Message::TableOfContentsMessage(TableOfContentsMessage::Right),
-                        )),
-                        crossterm::event::KeyCode::Down => Ok(Some(
-                            Message::TableOfContentsMessage(TableOfContentsMessage::Down),
-                        )),
-                        crossterm::event::KeyCode::Up => Ok(Some(Message::TableOfContentsMessage(
-                            TableOfContentsMessage::Up,
-                        ))),
-                        _ => Ok(None),
-                    },
-                },
+                crossterm::event::KeyCode::Right => Ok(Some(Message::NextWord)),
+                crossterm::event::KeyCode::Left => Ok(Some(Message::PrevWord)),
+                crossterm::event::KeyCode::Up => Ok(Some(Message::PrevLine)),
+                crossterm::event::KeyCode::Down => Ok(Some(Message::NextLine)),
+                crossterm::event::KeyCode::PageUp => Ok(Some(Message::PrevSection)),
+                crossterm::event::KeyCode::PageDown => Ok(Some(Message::NextSection)),
+                crossterm::event::KeyCode::Char('+') => Ok(Some(Message::IncreaseSpeed)),
+                crossterm::event::KeyCode::Char('-') => Ok(Some(Message::DecreaseSpeed)),
+                crossterm::event::KeyCode::Char(' ') => Ok(Some(Message::ToggleStatus)),
+                crossterm::event::KeyCode::Char('a') => Ok(Some(Message::TableOfContentsMessage(
+                    TableOfContentsMessage::Left,
+                ))),
+                crossterm::event::KeyCode::Char('d') => Ok(Some(Message::TableOfContentsMessage(
+                    TableOfContentsMessage::Right,
+                ))),
+                crossterm::event::KeyCode::Char('s') => Ok(Some(Message::TableOfContentsMessage(
+                    TableOfContentsMessage::Down,
+                ))),
+                crossterm::event::KeyCode::Char('w') => Ok(Some(Message::TableOfContentsMessage(
+                    TableOfContentsMessage::Up,
+                ))),
+                crossterm::event::KeyCode::Enter => Ok(Some(Message::TableOfContentsMessage(
+                    TableOfContentsMessage::Select,
+                ))),
+                _ => Ok(None),
             }
         } else {
             Ok(None)
         }
     } else {
-        if model.status == Status::Running
-            && model.last_word_change.elapsed() >= model.speed
-            {
+        if model.status == Status::Running && model.last_word_change.elapsed() >= model.speed {
             return Ok(Some(Message::NextWord));
         }
         Ok(None)
@@ -404,7 +375,6 @@ fn main() -> anyhow::Result<()> {
         last_word_change: Instant::now(),
         speed: args.speed,
         status: Status::Paused,
-        focus: Focus::Content,
     };
     loop {
         // Render the current view
