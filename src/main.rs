@@ -1,10 +1,11 @@
 use std::{
     path::PathBuf,
     time::{Duration, SystemTime},
+    u16,
 };
 
 use clap::{Parser, ValueHint};
-use document::{Document, DocumentCursor, TableOfContentNode};
+use document::{DocumentCursor, TableOfContentNode};
 mod document;
 use ratatui::{
     backend::CrosstermBackend,
@@ -12,7 +13,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction},
     style::{Color, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph, Scrollbar, ScrollbarOrientation},
+    widgets::{Block, Borders, Paragraph},
     Frame, Terminal,
 };
 use strum;
@@ -43,9 +44,9 @@ enum Focus {
     TableOfContents,
 }
 
-struct Model<D: Document> {
+struct Model {
     should_quit: bool,
-    cursor: DocumentCursor<D>,
+    cursor: DocumentCursor,
     table_of_contents: Vec<TreeItem<'static, usize>>,
     table_of_contents_state: TreeState<usize>,
     last_word_change: SystemTime,
@@ -79,39 +80,53 @@ enum TableOfContentsMessage {
     Up,
 }
 
-fn update<D: Document>(model: &mut Model<D>, msg: Message) -> Option<Message> {
+fn update(model: &mut Model, msg: Message) -> Option<Message> {
     match msg {
         Message::Quit => {
             model.should_quit = true;
             None
         }
         Message::PrevWord => {
-            model.cursor.prev_word();
-            None
+            if !model.cursor.current_section().prev_word() {
+                Some(Message::PrevSection)
+            } else {
+                None
+            }
         }
         Message::NextWord => {
-            model.cursor.next_word();
             model.last_word_change = SystemTime::now();
-            if model.cursor.current_word().is_none() {
+            if !model.cursor.current_section().next_word() {
                 Some(Message::NextSection)
             } else {
                 None
             }
         }
         Message::PrevLine => {
-            model.cursor.prev_line();
-            None
+            if !model.cursor.current_section().prev_line() {
+                Some(Message::PrevSection)
+            } else {
+                None
+            }
         }
         Message::NextLine => {
-            model.cursor.next_line();
-            None
+            if !model.cursor.current_section().next_line() {
+                Some(Message::NextSection)
+            } else {
+                None
+            }
         }
         Message::PrevSection => {
             model.cursor.prev_section();
+            model
+                .table_of_contents_state
+                .select(vec![model.cursor.section_index()]);
             None
         }
         Message::NextSection => {
             model.cursor.next_section();
+            model
+                .table_of_contents_state
+                .select(vec![model.cursor.section_index()]);
             None
         }
         Message::DecreaseSpeed => {
@@ -140,7 +155,7 @@ fn update<D: Document>(model: &mut Model<D>, msg: Message) -> Option<Message> {
             match msg {
                 TableOfContentsMessage::Select => {
                     if let Some(selected) = model.table_of_contents_state.selected().first() {
-                        model.cursor.go_to_section(*selected);
+                        model.cursor.goto_section(*selected);
                         return Some(Message::ChangeFocus(Focus::Content));
                     }
                 }
@@ -158,12 +173,11 @@ fn update<D: Document>(model: &mut Model<D>, msg: Message) -> Option<Message> {
     }
 }
 
-fn view<D: Document>(model: &mut Model<D>, f: &mut Frame) {
-    let word = model.cursor.current_word().unwrap_or_default();
-    let page = model
+fn view(model: &mut Model, f: &mut Frame) {
+    let word = model
         .cursor
         .current_section()
-        .map(|p| p.content)
+        .current_word()
         .unwrap_or_default();
     let main_layout = Layout::default()
         .direction(Direction::Vertical)
@@ -188,11 +202,7 @@ fn view<D: Document>(model: &mut Model<D>, f: &mut Frame) {
         &mut model.table_of_contents_state,
     );
     f.render_widget(
-        content(
-            &page,
-            model.cursor.word_index(),
-            model.cursor.current_line(),
-        ),
+        content(&mut model.cursor, content_layout[1].width),
         content_layout[1],
     );
     f.render_widget(status_bar(&model), main_layout[2])
@@ -209,15 +219,19 @@ fn table_of_contents(content: Vec<TreeItem<'static, usize>>) -> Tree<usize> {
         )
 }
 
-fn content(section: &str, current_word: usize, current_line: Option<document::Line>) -> Paragraph {
+fn content(cursor: &mut document::DocumentCursor, width: u16) -> Paragraph {
     let mut lines: Vec<Line> = vec![];
     let mut index = 0;
+    let current_section = cursor.current_section_or_resize(width as usize);
+    let current_line = current_section.current_line();
+    let text_lines = current_section.content.lines();
     if let Some(current_line) = current_line {
-        for l in section.lines() {
+        for l in text_lines {
             let split: Vec<_> = l.trim().split_whitespace().collect();
             let line = if !l.is_empty() && index == current_line.index {
-                let line: Line = if current_word - current_line.word_indexes.0 > 0 {
-                    let pos = current_word - current_line.word_indexes.0;
+                let line: Line = if current_section.word_index() != current_line.first_word_index()
+                {
+                    let pos = current_section.word_index() - current_line.first_word_index();
                     vec![
                         Span::raw(split[..pos].join(" ")),
                         Span::raw(" "),
@@ -281,7 +295,7 @@ fn current_word(word: impl ToString) -> Paragraph<'static> {
         .style(Style::default().fg(Color::White).bg(Color::Black))
 }
 
-fn status_bar<D: Document>(model: &Model<D>) -> Paragraph {
+fn status_bar(model: &Model) -> Paragraph {
     let status: Line = vec![
         Span::raw("Status: "),
         Span::raw(model.status.to_string()),
@@ -289,12 +303,18 @@ fn status_bar<D: Document>(model: &Model<D>) -> Paragraph {
         Span::raw(model.speed.as_millis().to_string()),
         Span::raw(" Focus: "),
         Span::raw(model.focus.to_string()),
+        Span::raw(" Position: "),
+        Span::raw(format!(
+            "{}/{}",
+            model.cursor.section_index(),
+            model.cursor.sections()
+        )),
     ]
     .into();
     Paragraph::new(status).block(Block::default().title("Status").borders(Borders::ALL))
 }
 
-fn handle_event<D: Document>(model: &Model<D>) -> anyhow::Result<Option<Message>> {
+fn handle_event(model: &Model) -> anyhow::Result<Option<Message>> {
     if crossterm::event::poll(std::time::Duration::from_millis(250))? {
         if let crossterm::event::Event::Key(key) = crossterm::event::read()? {
             match key.code {
