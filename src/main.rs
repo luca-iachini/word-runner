@@ -119,14 +119,14 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
             model.cursor.prev_section();
             model
                 .table_of_contents_state
-                .select(vec![model.cursor.current_section().id]);
+                .select(vec![model.cursor.section_index()]);
             None
         }
         Message::NextSection => {
             model.cursor.next_section();
             model
                 .table_of_contents_state
-                .select(vec![model.cursor.current_section().id]);
+                .select(vec![model.cursor.section_index()]);
             None
         }
         Message::DecreaseSpeed => {
@@ -303,6 +303,8 @@ fn status_bar(model: &Model) -> Paragraph {
         Span::raw(model.speed.as_millis().to_string()),
         Span::raw(" Focus: "),
         Span::raw(model.focus.to_string()),
+        Span::raw(" Chapter: "),
+        Span::raw(format!("{}", model.cursor.section_index())),
     ]
     .into();
     Paragraph::new(status).block(Block::default().title("Status").borders(Borders::ALL))
@@ -420,10 +422,10 @@ fn split_word(word: &str) -> (String, String, String) {
 impl<'a> From<&TableOfContentNode> for TreeItem<'a, usize> {
     fn from(value: &TableOfContentNode) -> Self {
         if value.children.is_empty() {
-            TreeItem::new_leaf(value.id, value.name.clone())
+            TreeItem::new_leaf(value.index, value.name.clone())
         } else {
             TreeItem::new(
-                value.id,
+                value.index,
                 value.name.clone(),
                 value.children.iter().map(Into::into).collect(),
             )

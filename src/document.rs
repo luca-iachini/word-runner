@@ -12,7 +12,7 @@ use itertools::Itertools;
 
 #[derive(Debug)]
 pub struct TableOfContentNode {
-    pub id: usize,
+    pub index: usize,
     pub name: String,
     pub children: Vec<TableOfContentNode>,
 }
@@ -20,7 +20,7 @@ pub struct TableOfContentNode {
 impl TableOfContentNode {
     fn new(value: &NavPoint, doc: &EpubDoc) -> Self {
         Self {
-            id: doc.resource_uri_to_chapter(&value.content).unwrap(),
+            index: doc.resource_uri_to_chapter(&value.content).unwrap(),
             name: value.label.clone(),
             children: value
                 .children
@@ -48,12 +48,15 @@ impl DocumentCursor {
             current_section,
         }
     }
+    pub fn section_index(&self) -> usize {
+        self.doc.get_current_page()
+    }
     pub fn current_section(&mut self) -> &mut SectionCursor {
         &mut self.current_section
     }
 
     pub fn current_section_or_resize(&mut self, size: usize) -> &mut SectionCursor {
-        if self.current_section.id != self.doc.get_current_page() {
+        if self.current_section.index != self.doc.get_current_page() {
             self.current_section = self
                 .doc
                 .get_current()
@@ -76,7 +79,7 @@ impl DocumentCursor {
 
 #[derive(Debug, Default, Clone)]
 pub struct SectionCursor {
-    pub id: usize,
+    pub index: usize,
     pub content: String,
     pub raw_content: Vec<u8>,
     pub lines: Vec<Line>,
@@ -97,7 +100,7 @@ impl SectionCursor {
             .copied()
             .unwrap_or_default();
         Self {
-            id: number,
+            index: number,
             content,
             raw_content,
             lines,
@@ -108,7 +111,7 @@ impl SectionCursor {
     }
 
     fn from_resize(other: &Self, size: usize) -> Self {
-        let mut result = SectionCursor::new(other.id, other.raw_content.clone(), size);
+        let mut result = SectionCursor::new(other.index, other.raw_content.clone(), size);
         result.word_index = other.word_index;
         result.line_index = result
             .lines
@@ -301,12 +304,12 @@ mod test {
         let mut cursor = DocumentCursor::new(epub);
 
         let_assert!(section = cursor.current_section());
-        check!(section.id == 1);
+        check!(section.index == 1);
 
         cursor.next_section();
         check!(cursor.doc.spine.len() > 1);
         let_assert!(section = cursor.current_section());
-        check!(section.id == 2);
+        check!(section.index == 2);
     }
 
     #[rstest]
