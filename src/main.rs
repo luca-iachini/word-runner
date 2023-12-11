@@ -414,10 +414,10 @@ fn split_word(word: &str) -> (String, String, String) {
 impl<'a> From<&TableOfContentNode> for TreeItem<'a, usize> {
     fn from(value: &TableOfContentNode) -> Self {
         if value.children.is_empty() {
-            TreeItem::new_leaf(value.index, value.name.clone())
+            TreeItem::new_leaf(value.id, value.name.clone())
         } else {
             TreeItem::new(
-                value.index,
+                value.id,
                 value.name.clone(),
                 value.children.iter().map(Into::into).collect(),
             )

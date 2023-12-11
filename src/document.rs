@@ -12,17 +12,21 @@ use itertools::Itertools;
 
 #[derive(Debug)]
 pub struct TableOfContentNode {
-    pub index: usize,
+    pub id: usize,
     pub name: String,
     pub children: Vec<TableOfContentNode>,
 }
 
-impl From<&NavPoint> for TableOfContentNode {
-    fn from(value: &NavPoint) -> Self {
+impl TableOfContentNode {
+    fn new(value: &NavPoint, doc: &EpubDoc) -> Self {
         Self {
-            index: value.play_order,
+            id: doc.resource_uri_to_chapter(&value.content).unwrap(),
             name: value.label.clone(),
-            children: value.children.iter().map(Into::into).collect(),
+            children: value
+                .children
+                .iter()
+                .map(|t| TableOfContentNode::new(t, doc))
+                .collect(),
         }
     }
 }
@@ -270,7 +274,11 @@ impl EpubDoc {
         Ok(Self(epub::doc::EpubDoc::new(path)?))
     }
     pub fn table_of_contents(&self) -> Vec<TableOfContentNode> {
-        self.0.toc.iter().map(Into::into).collect()
+        self.0
+            .toc
+            .iter()
+            .map(|t| TableOfContentNode::new(t, self))
+            .collect()
     }
 }
 
