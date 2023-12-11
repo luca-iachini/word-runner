@@ -1,6 +1,6 @@
 use std::{
     path::{Path, PathBuf},
-    time::{Duration, SystemTime},
+    time::{Duration, Instant},
     u16,
 };
 
@@ -19,7 +19,7 @@ use ratatui::{
 use strum;
 use tui_tree_widget::{Tree, TreeItem, TreeState};
 
-const CONFIG_PATH: &'static str = "~/.config/word-runner";
+const CONFIG_PATH: &'static str = ".config/";
 
 #[derive(Parser)]
 struct Args {
@@ -51,7 +51,7 @@ struct Model {
     cursor: DocumentCursor,
     table_of_contents: Vec<TreeItem<'static, usize>>,
     table_of_contents_state: TreeState<usize>,
-    last_word_change: SystemTime,
+    last_word_change: Instant,
     speed: Duration,
     status: Status,
     focus: Focus,
@@ -97,7 +97,7 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
             }
         }
         Message::NextWord => {
-            model.last_word_change = SystemTime::now();
+            model.last_word_change = Instant::now();
             if !model.cursor.current_section().next_word() {
                 Some(Message::NextSection)
             } else {
@@ -318,7 +318,8 @@ fn status_bar(model: &Model) -> Paragraph {
 }
 
 fn handle_event(model: &Model) -> anyhow::Result<Option<Message>> {
-    if crossterm::event::poll(std::time::Duration::from_millis(250))? {
+    let timeout = model.speed.saturating_sub(model.last_word_change.elapsed());
+    if crossterm::event::poll(timeout)? {
         if let crossterm::event::Event::Key(key) = crossterm::event::read()? {
             match key.code {
                 crossterm::event::KeyCode::Char('q') => Ok(Some(Message::Quit)),
@@ -366,8 +367,8 @@ fn handle_event(model: &Model) -> anyhow::Result<Option<Message>> {
         }
     } else {
         if model.status == Status::Running
-            && model.last_word_change.elapsed().unwrap() >= model.speed
-        {
+            && model.last_word_change.elapsed() >= model.speed
+            {
             return Ok(Some(Message::NextWord));
         }
         Ok(None)
@@ -400,7 +401,7 @@ fn main() -> anyhow::Result<()> {
         cursor,
         table_of_contents,
         table_of_contents_state: TreeState::default(),
-        last_word_change: SystemTime::now(),
+        last_word_change: Instant::now(),
         speed: args.speed,
         status: Status::Paused,
         focus: Focus::Content,
