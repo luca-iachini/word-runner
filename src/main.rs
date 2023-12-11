@@ -1,4 +1,5 @@
 use std::{
+    cmp::{max, min},
     path::{Path, PathBuf},
     time::{Duration, Instant},
     u16,
@@ -125,11 +126,11 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
             None
         }
         Message::DecreaseSpeed => {
-            model.speed = model.speed.saturating_add(Duration::from_millis(25));
+            model.speed = min(Duration::from_secs(2), model.speed.saturating_add(Duration::from_millis(10)));
             None
         }
         Message::IncreaseSpeed => {
-            model.speed = model.speed.saturating_sub(Duration::from_millis(25));
+            model.speed = max(Duration::from_millis(50), model.speed.saturating_sub(Duration::from_millis(10)));
             None
         }
         Message::ToggleStatus => match model.status {
@@ -291,7 +292,7 @@ fn status_bar(model: &Model) -> Paragraph {
         Span::raw("Status: "),
         Span::raw(model.status.to_string()),
         Span::raw(" Speed: "),
-        Span::raw(model.speed.as_millis().to_string()),
+        Span::raw(format!("{} wpm",60000/model.speed.as_millis())),
         Span::raw(" Position: "),
         Span::raw(format!(
             "{}/{}",
