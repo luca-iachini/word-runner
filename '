@@ -90,18 +90,16 @@ impl SectionCursor {
         let content = String::from_utf8(raw_content.clone()).unwrap();
         let content = html2text::from_read(content.as_bytes(), size);
         let lines = lines(content.clone());
-        let word_index = lines
-            .first()
-            .map(|l| l.word_indexes.first())
-            .flatten()
-            .copied()
-            .unwrap_or_default();
         Self {
             id: number,
             content,
             raw_content,
             lines,
-            word_index,
+            word_index: lines
+                .first()
+                .map(|l| l.word_indexes.first())
+                .flatten()
+                .unwrap_or_default(),
             line_index: 0,
             size,
         }

@@ -117,10 +117,16 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
         }
         Message::PrevSection => {
             model.cursor.prev_section();
+            model
+                .table_of_contents_state
+                .select(vec![model.cursor.current_section().id]);
             None
         }
         Message::NextSection => {
             model.cursor.next_section();
+            model
+                .table_of_contents_state
+                .select(vec![model.cursor.current_section().id]);
             None
         }
         Message::DecreaseSpeed => {
