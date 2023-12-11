@@ -56,24 +56,42 @@ impl DocumentCursor {
     }
 
     pub fn current_section_or_resize(&mut self, size: usize) -> &mut SectionCursor {
-        if self.current_section.index != self.doc.get_current_page() {
-            self.current_section = self
-                .doc
-                .get_current()
-                .map(|c| SectionCursor::new(self.doc.get_current_page(), c.0, size))
-                .unwrap_or_default();
-        } else if self.current_section.size != size {
+        if self.current_section.size != size {
             self.current_section = SectionCursor::from_resize(&self.current_section, size);
         }
         &mut self.current_section
     }
 
     pub fn prev_section(&mut self) -> bool {
-        self.doc.go_prev()
+        if self.doc.go_prev() {
+            self.load_section();
+            true
+        } else {
+            false
+        }
     }
 
     pub fn next_section(&mut self) -> bool {
-        self.doc.go_next()
+        if self.doc.go_next() {
+            self.load_section();
+            true
+        } else {
+            false
+        }
+    }
+
+    fn load_section(&mut self) {
+        self.current_section = self
+            .doc
+            .get_current()
+            .map(|c| {
+                SectionCursor::new(
+                    self.doc.get_current_page(),
+                    c.0,
+                    self.current_section().size,
+                )
+            })
+            .unwrap_or_default();
     }
 }
 
