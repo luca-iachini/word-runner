@@ -154,8 +154,8 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
         Message::TableOfContentsMessage(msg) => {
             match msg {
                 TableOfContentsMessage::Select => {
-                    if let Some(_selected) = model.table_of_contents_state.selected().first() {
-                        // TODO model.cursor.go_to_section(*selected);
+                    if let Some(selected) = model.table_of_contents_state.selected().first() {
+                        model.cursor.goto_section(*selected);
                         return Some(Message::ChangeFocus(Focus::Content));
                     }
                 }
@@ -303,7 +303,7 @@ fn status_bar(model: &Model) -> Paragraph {
         Span::raw(model.speed.as_millis().to_string()),
         Span::raw(" Focus: "),
         Span::raw(model.focus.to_string()),
-        Span::raw(" Chapter: "),
+        Span::raw(" Page: "),
         Span::raw(format!("{}", model.cursor.section_index())),
     ]
     .into();

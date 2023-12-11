@@ -62,6 +62,15 @@ impl DocumentCursor {
         &mut self.current_section
     }
 
+    pub fn goto_section(&mut self, index: usize) -> bool {
+        if self.doc.set_current_page(index) {
+            self.load_section();
+            true
+        } else {
+            false
+        }
+    }
+
     pub fn prev_section(&mut self) -> bool {
         if self.doc.go_prev() {
             self.load_section();
