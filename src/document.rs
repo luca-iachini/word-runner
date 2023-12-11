@@ -89,6 +89,10 @@ impl DocumentCursor {
         }
     }
 
+    pub fn sections(&self) -> usize {
+        self.doc.get_num_pages()
+    }
+
     fn load_section(&mut self) {
         self.current_section = self
             .doc

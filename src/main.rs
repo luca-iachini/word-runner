@@ -303,8 +303,12 @@ fn status_bar(model: &Model) -> Paragraph {
         Span::raw(model.speed.as_millis().to_string()),
         Span::raw(" Focus: "),
         Span::raw(model.focus.to_string()),
-        Span::raw(" Page: "),
-        Span::raw(format!("{}", model.cursor.section_index())),
+        Span::raw(" Position: "),
+        Span::raw(format!(
+            "{}/{}",
+            model.cursor.section_index(),
+            model.cursor.sections()
+        )),
     ]
     .into();
     Paragraph::new(status).block(Block::default().title("Status").borders(Borders::ALL))
