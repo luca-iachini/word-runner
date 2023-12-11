@@ -1,11 +1,11 @@
 use std::{
-    path::PathBuf,
+    path::{Path, PathBuf},
     time::{Duration, SystemTime},
     u16,
 };
 
 use clap::{Parser, ValueHint};
-use document::{DocumentCursor, TableOfContentNode};
+use document::{DocState, DocumentCursor, TableOfContentNode};
 mod document;
 use ratatui::{
     backend::CrosstermBackend,
@@ -18,6 +18,8 @@ use ratatui::{
 };
 use strum;
 use tui_tree_widget::{Tree, TreeItem, TreeState};
+
+const CONFIG_PATH: &'static str = "~/.config/word-runner";
 
 #[derive(Parser)]
 struct Args {
@@ -84,6 +86,7 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
     match msg {
         Message::Quit => {
             model.should_quit = true;
+            let _ = model.cursor.doc_state().store(Path::new(CONFIG_PATH));
             None
         }
         Message::PrevWord => {
@@ -385,7 +388,13 @@ fn main() -> anyhow::Result<()> {
     let table_of_contents = doc.table_of_contents();
     let table_of_contents: Vec<TreeItem<'static, usize>> =
         table_of_contents.iter().map(Into::into).collect();
-    let cursor = DocumentCursor::new(doc);
+
+    std::fs::create_dir_all(CONFIG_PATH)?;
+    let doc_state = DocState::load(
+        Path::new(CONFIG_PATH),
+        doc.unique_identifier.clone().unwrap(),
+    );
+    let cursor = DocumentCursor::new(doc, doc_state);
     let mut model = Model {
         should_quit: false,
         cursor,

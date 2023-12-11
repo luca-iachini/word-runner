@@ -1,6 +1,6 @@
 use std::{
     fs::File,
-    io::BufReader,
+    io::{BufReader, BufWriter, Write},
     ops::{Deref, DerefMut},
     path::Path,
     usize,
@@ -37,12 +37,13 @@ pub struct DocumentCursor {
 }
 
 impl DocumentCursor {
-    pub fn new(mut doc: EpubDoc) -> Self {
-        doc.go_next();
-        let current_section = doc
+    pub fn new(mut doc: EpubDoc, doc_state: DocState) -> Self {
+        doc.set_current_page(doc_state.section_index);
+        let mut current_section = doc
             .get_current()
             .map(|c| SectionCursor::new(doc.get_current_page(), c.0, 80))
             .unwrap_or_default();
+        current_section.word_index = doc_state.word_index;
         Self {
             doc,
             current_section,
@@ -105,6 +106,14 @@ impl DocumentCursor {
                 )
             })
             .unwrap_or_default();
+    }
+
+    pub fn doc_state(&self) -> DocState {
+        DocState {
+            identifier: self.doc.unique_identifier.clone().unwrap(),
+            section_index: self.current_section.index,
+            word_index: self.current_section.word_index,
+        }
     }
 }
 
@@ -323,6 +332,40 @@ impl EpubDoc {
     }
 }
 
+#[derive(serde::Deserialize, serde::Serialize)]
+pub struct DocState {
+    pub identifier: String,
+    pub section_index: usize,
+    pub word_index: usize,
+}
+
+impl DocState {
+    pub fn new(identifier: String) -> Self {
+        Self {
+            identifier,
+            section_index: 0,
+            word_index: 0,
+        }
+    }
+    pub fn load(config_dir: &Path, identifier: String) -> Self {
+        let config_path = config_dir.join(identifier.clone());
+        let state = std::fs::read_to_string(config_path).ok();
+
+        if let Some(state) = state {
+            serde_json::from_str(&state).unwrap_or_else(|_| Self::new(identifier))
+        } else {
+            Self::new(identifier)
+        }
+    }
+    pub fn store(&self, config_dir: &Path) -> anyhow::Result<()> {
+        let config_path = config_dir.join(self.identifier.clone());
+        let file = File::create(config_path)?;
+        let mut writer = BufWriter::new(file);
+        serde_json::to_writer(&mut writer, &self)?;
+        writer.flush()?;
+        Ok(())
+    }
+}
 #[cfg(test)]
 mod test {
     use super::*;
@@ -332,7 +375,7 @@ mod test {
 
     #[rstest]
     fn it_gets_a_section(epub: EpubDoc) {
-        let mut cursor = DocumentCursor::new(epub);
+        let mut cursor = DocumentCursor::new(epub, DocState::new("xxxx".to_string()));
 
         let_assert!(section = cursor.current_section());
         check!(section.index == 1);
@@ -344,9 +387,8 @@ mod test {
     }
 
     #[rstest]
-    fn it_get_table_of_content(epub: EpubDoc) {
-        let toc = epub.table_of_contents();
-        dbg!(toc);
+    fn it_gets_identifier(epub: EpubDoc) {
+        dbg!(&epub.unique_identifier);
         check!(false);
     }
 
