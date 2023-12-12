@@ -1,6 +1,5 @@
 use std::{
     cmp::{max, min},
-    default,
     path::{Path, PathBuf},
     time::{Duration, Instant},
     u16,
@@ -9,6 +8,7 @@ use std::{
 use clap::{Parser, ValueHint};
 use document::{DocState, DocumentCursor, TableOfContentNode};
 mod document;
+use itertools::Itertools;
 use ratatui::{
     backend::CrosstermBackend,
     layout::Layout,
@@ -238,15 +238,16 @@ fn content(cursor: &mut document::DocumentCursor, width: u16) -> Paragraph {
                         .nth(pos)
                         .map(|e| e.0)
                         .unwrap();
-                    vec![
-                        Span::raw(split[..pos].join("")),
-                        word_cursor(split[pos]),
-                        Span::raw(split[pos + 1..].join("")),
-                    ]
-                    .into()
+                    let mut res = vec![Span::raw(split[..pos].join(""))];
+                    res.extend(word_cursor(split[pos]));
+                    res.push(Span::raw(split[pos + 1..].join("")));
+                    res
                 } else {
-                    vec![word_cursor(split[0]), Span::raw(split[1..].join(""))].into()
-                };
+                    let mut res = word_cursor(split[0]);
+                    res.push(Span::raw(split[1..].join("")));
+                    res
+                }
+                .into();
 
                 line
             } else {
@@ -267,8 +268,17 @@ fn content(cursor: &mut document::DocumentCursor, width: u16) -> Paragraph {
         .style(Style::default().fg(Color::White).bg(Color::Black))
 }
 
-fn word_cursor(word: &str) -> Span {
-    Span::styled(word, Style::default().bg(Color::LightYellow))
+fn word_cursor(word: &str) -> Vec<Span> {
+    let mut chars = word.chars();
+    let word: String = chars
+        .by_ref()
+        .peeking_take_while(|c| !c.is_whitespace())
+        .collect();
+    let postfix: String = chars.by_ref().collect();
+    vec![
+        Span::styled(word, Style::default().bg(Color::LightYellow)),
+        Span::raw(postfix),
+    ]
 }
 
 fn current_word(word: impl ToString) -> Paragraph<'static> {
