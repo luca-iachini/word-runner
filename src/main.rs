@@ -306,16 +306,13 @@ fn current_word(word: impl ToString) -> Paragraph<'static> {
 }
 
 fn status_bar(model: &Model) -> Paragraph {
-    let status: Line = vec![
-        Span::raw(format!("Status: {} ", model.status.to_string())),
-        Span::raw(format!(" Speed: {} wpm", 60000 / model.speed.as_millis())),
-        Span::raw(format!(
-            " Position {}/{}",
-            model.cursor.section_index(),
-            model.cursor.sections()
-        )),
-    ]
-    .into();
+    let status = format!(
+        "Status: {} Speed: {} wpm Position {}/{}",
+        model.status.to_string(),
+        60000 / model.speed.as_millis(),
+        model.cursor.section_index(),
+        model.cursor.sections(),
+    );
     Paragraph::new(status).block(Block::default().title("Status").borders(Borders::ALL))
 }
 
