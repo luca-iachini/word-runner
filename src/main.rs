@@ -115,22 +115,28 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
             model.cursor.prev_section();
             model
                 .table_of_contents_state
-                .select(vec![model.cursor.section_index()]);
+                .select(model.cursor.toc_index());
             None
         }
         Message::NextSection => {
             model.cursor.next_section();
             model
                 .table_of_contents_state
-                .select(vec![model.cursor.section_index()]);
+                .select(model.cursor.toc_index());
             None
         }
         Message::DecreaseSpeed => {
-            model.speed = min(Duration::from_secs(2), model.speed.saturating_add(Duration::from_millis(10)));
+            model.speed = min(
+                Duration::from_secs(2),
+                model.speed.saturating_add(Duration::from_millis(10)),
+            );
             None
         }
         Message::IncreaseSpeed => {
-            model.speed = max(Duration::from_millis(50), model.speed.saturating_sub(Duration::from_millis(10)));
+            model.speed = max(
+                Duration::from_millis(50),
+                model.speed.saturating_sub(Duration::from_millis(10)),
+            );
             None
         }
         Message::ToggleStatus => match model.status {
@@ -214,7 +220,7 @@ fn table_of_contents(content: Vec<TreeItem<'static, usize>>) -> Tree<usize> {
 fn content(cursor: &mut document::DocumentCursor, width: u16) -> Paragraph {
     let mut lines: Vec<Line> = vec![];
     let mut index = 0;
-    let current_section = cursor.current_section_or_resize(width as usize);
+    let current_section = cursor.current_section_or_resize(width as usize - 1);
     let current_line = current_section.current_line();
     let text_lines = current_section.content.lines();
     if let Some(current_line) = current_line {
@@ -289,16 +295,15 @@ fn current_word(word: impl ToString) -> Paragraph<'static> {
 
 fn status_bar(model: &Model) -> Paragraph {
     let status: Line = vec![
-        Span::raw("Status: "),
-        Span::raw(model.status.to_string()),
-        Span::raw(" Speed: "),
-        Span::raw(format!("{} wpm",60000/model.speed.as_millis())),
-        Span::raw(" Position: "),
+        Span::raw(format!("Status: {} ", model.status.to_string())),
+        Span::raw(format!(" Speed: {} wpm", 60000 / model.speed.as_millis())),
         Span::raw(format!(
-            "{}/{}",
+            " Position {}/{}",
             model.cursor.section_index(),
             model.cursor.sections()
         )),
+        Span::raw(format!(" Toc: {:?}", model.cursor.toc_index())),
+        Span::raw(format!(" Chapter: {:?}", model.cursor.section_index())),
     ]
     .into();
     Paragraph::new(status).block(Block::default().title("Status").borders(Borders::ALL))

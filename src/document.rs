@@ -18,7 +18,7 @@ pub struct TableOfContentNode {
 }
 
 impl TableOfContentNode {
-    fn new(value: &NavPoint, doc: &EpubDoc) -> Self {
+    fn new(value: &NavPoint, doc: &epub::doc::EpubDoc<BufReader<File>>) -> Self {
         Self {
             index: doc.resource_uri_to_chapter(&value.content).unwrap(),
             name: value.label.clone(),
@@ -108,6 +108,10 @@ impl DocumentCursor {
             .unwrap_or_default();
     }
 
+    pub fn toc_index(&self) -> Vec<usize> {
+        toc_index(&self, &self.doc.table_of_contents())
+    }
+
     pub fn doc_state(&self) -> DocState {
         DocState {
             identifier: self.doc.unique_identifier.clone().unwrap(),
@@ -115,6 +119,26 @@ impl DocumentCursor {
             word_index: self.current_section.word_index,
         }
     }
+}
+
+fn toc_index(cursor: &DocumentCursor, toc: &[TableOfContentNode]) -> Vec<usize> {
+    let mut res = vec![];
+    if toc.is_empty() || cursor.section_index() < cursor.doc.table_of_contents()[0].index {
+        return res;
+    }
+
+    let mut i = 0;
+    while i < toc.len() - 1 {
+        if toc[i].index >= cursor.section_index() && cursor.section_index() < toc[i + 1].index {
+            break;
+        }
+        i += 1;
+    }
+    res.push(toc[i].index);
+    if !toc[i].children.is_empty() {
+        res.extend(toc_index(cursor, &toc[i].children));
+    }
+    res
 }
 
 #[derive(Debug, Default, Clone)]
@@ -245,7 +269,7 @@ fn lines(content: String) -> Vec<Line> {
         let valid_words: Vec<usize> = l
             .split_whitespace()
             .enumerate()
-            .filter(|(_, w)| w.chars().any(char::is_alphabetic))
+            //.filter(|(_, w)| w.chars().any(char::is_alphabetic))
             .map(|(i, _)| global_words_index + i)
             .collect();
         global_words_index = valid_words.last().copied().unwrap_or_default();
@@ -304,7 +328,7 @@ impl Line {
     }
 }
 
-pub struct EpubDoc(epub::doc::EpubDoc<BufReader<File>>);
+pub struct EpubDoc(epub::doc::EpubDoc<BufReader<File>>, Vec<TableOfContentNode>);
 
 impl Deref for EpubDoc {
     type Target = epub::doc::EpubDoc<BufReader<File>>;
@@ -321,14 +345,16 @@ impl DerefMut for EpubDoc {
 
 impl EpubDoc {
     pub fn open(path: &Path) -> Result<Self> {
-        Ok(Self(epub::doc::EpubDoc::new(path)?))
-    }
-    pub fn table_of_contents(&self) -> Vec<TableOfContentNode> {
-        self.0
+        let doc = epub::doc::EpubDoc::new(path)?;
+        let toc = doc
             .toc
             .iter()
-            .map(|t| TableOfContentNode::new(t, &self))
-            .collect()
+            .map(|t| TableOfContentNode::new(t, &doc))
+            .collect();
+        Ok(Self(doc, toc))
+    }
+    pub fn table_of_contents(&self) -> &[TableOfContentNode] {
+        &self.1
     }
 }
 
