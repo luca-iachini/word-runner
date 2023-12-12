@@ -13,7 +13,7 @@ use ratatui::{
     layout::Layout,
     layout::{Alignment, Constraint, Direction},
     style::{Color, Style},
-    text::{Line, Span},
+    text::{Line, Span, Text},
     widgets::{Block, Borders, Paragraph},
     Frame, Terminal,
 };
@@ -182,7 +182,7 @@ fn view(model: &mut Model, f: &mut Frame) {
         .margin(1)
         .constraints(
             [
-                Constraint::Max(3),
+                Constraint::Max(5),
                 Constraint::Percentage(80),
                 Constraint::Max(3),
             ]
@@ -225,8 +225,8 @@ fn content(cursor: &mut document::DocumentCursor, width: u16) -> Paragraph {
     let text_lines = current_section.content.lines();
     if let Some(current_line) = current_line {
         for l in text_lines {
-            let split: Vec<_> = l.trim().split_whitespace().collect();
             let line = if !l.is_empty() && index == current_line.index {
+                let split: Vec<_> = l.trim().split_whitespace().collect();
                 let line: Line = if current_section.word_index() != current_line.first_word_index()
                 {
                     let pos = current_section.word_index() - current_line.first_word_index();
@@ -283,7 +283,8 @@ fn current_word(word: impl ToString) -> Paragraph<'static> {
         ]
         .into()
     };
-    Paragraph::new(word_text)
+    let gauge: Text = vec!["\\/".into(), word_text, "/\\".into()].into();
+    Paragraph::new(gauge)
         .alignment(Alignment::Center)
         .block(
             Block::default()
@@ -302,8 +303,6 @@ fn status_bar(model: &Model) -> Paragraph {
             model.cursor.section_index(),
             model.cursor.sections()
         )),
-        Span::raw(format!(" Toc: {:?}", model.cursor.toc_index())),
-        Span::raw(format!(" Chapter: {:?}", model.cursor.section_index())),
     ]
     .into();
     Paragraph::new(status).block(Block::default().title("Status").borders(Borders::ALL))
