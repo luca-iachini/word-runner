@@ -5,3 +5,4 @@
 - [ ] add help pop-up
 - [ ] better word filtering
 - [ ] Toc: change Tree widget to custom widget?
+- [ ] speed param wpm
