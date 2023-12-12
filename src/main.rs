@@ -1,5 +1,6 @@
 use std::{
     cmp::{max, min},
+    default,
     path::{Path, PathBuf},
     time::{Duration, Instant},
     u16,
@@ -372,11 +373,13 @@ fn main() -> anyhow::Result<()> {
         doc.unique_identifier.clone().unwrap(),
     );
     let cursor = DocumentCursor::new(doc, doc_state);
+    let mut table_of_contents_state = TreeState::default();
+    table_of_contents_state.select(cursor.toc_index());
     let mut model = Model {
         should_quit: false,
         cursor,
         table_of_contents,
-        table_of_contents_state: TreeState::default(),
+        table_of_contents_state,
         last_word_change: Instant::now(),
         speed: args.speed,
         status: Status::Paused,
