@@ -221,31 +221,31 @@ fn table_of_contents(content: Vec<TreeItem<'static, usize>>) -> Tree<usize> {
 fn content(cursor: &mut document::DocumentCursor, width: u16) -> Paragraph {
     let mut lines: Vec<Line> = vec![];
     let mut index = 0;
-    let current_section = cursor.current_section_or_resize(width as usize - 1);
+    let current_section = cursor.current_section_or_resize(width as usize - 2);
     let current_line = current_section.current_line();
     let text_lines = current_section.content.lines();
     if let Some(current_line) = current_line {
         for l in text_lines {
             let line = if !l.is_empty() && index == current_line.index {
-                let split: Vec<_> = l.trim().split_whitespace().collect();
+                let split: Vec<_> = l.split_inclusive(char::is_whitespace).collect();
                 let line: Line = if current_section.word_index() != current_line.first_word_index()
                 {
                     let pos = current_section.word_index() - current_line.first_word_index();
+                    let pos = split
+                        .iter()
+                        .enumerate()
+                        .filter(|w| !w.1.trim().is_empty())
+                        .nth(pos)
+                        .map(|e| e.0)
+                        .unwrap();
                     vec![
-                        Span::raw(split[..pos].join(" ")),
-                        Span::raw(" "),
+                        Span::raw(split[..pos].join("")),
                         word_cursor(split[pos]),
-                        Span::raw(" "),
-                        Span::raw(split[pos + 1..].join(" ")),
+                        Span::raw(split[pos + 1..].join("")),
                     ]
                     .into()
                 } else {
-                    vec![
-                        word_cursor(split[0]),
-                        Span::raw(" "),
-                        Span::raw(split[1..].join(" ")),
-                    ]
-                    .into()
+                    vec![word_cursor(split[0]), Span::raw(split[1..].join(""))].into()
                 };
 
                 line
